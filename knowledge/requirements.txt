@@ -1,0 +1,31 @@
+# Web API
+fastapi>=0.115,<1
+uvicorn[standard]>=0.30,<1
+python-multipart>=0.0.9,<1
+python-dotenv>=1,<2
+pydantic>=2.9,<3
+
+# HTTP and parsing
+aiohttp>=3.10,<4
+beautifulsoup4>=4.12,<5
+requests>=2.32,<3
+Pillow>=10,<13
+
+# LLM and workflow
+openai>=2,<3
+langchain-openai>=1,<2
+langchain-text-splitters>=1,<2
+langgraph>=1,<2
+
+# Embedding and reranking
+FlagEmbedding==1.4.0
+transformers>=4.44.2,<5
+torch>=2.2
+
+# Storage
+pymilvus>=2.5.27,<3
+pymongo>=4.10,<5
+minio>=7.2,<8
+
+# Windows 下使用 Microsoft Word 作为 LibreOffice 的回退方案
+pywin32>=306; sys_platform == "win32"

@@ -1,0 +1,37 @@
+
+# ==============================
+# Python
+# ==============================
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# ==============================
+# IDE
+# ==============================
+.idea/
+.vscode/
+
+# ==============================
+# Downloaded dependencies
+# ==============================
+.downloads/
+*.whl
+
+# ==============================
+# Runtime / temporary files
+# ==============================
+temp-files/
+
+knowledge/processor/import_processor/input_dir/
+knowledge/processor/import_processor/output_dir/
+
+# Evaluation generated results
+knowledge/evaluation/results/
+
+# ==============================
+# Logs
+# ==============================
+*.log
+logs/knowledge/.pytest_cache/

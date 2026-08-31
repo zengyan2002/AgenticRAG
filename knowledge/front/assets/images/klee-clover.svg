@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="四叶草">
+  <defs>
+    <filter id="soft-shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="2" stdDeviation="1.6" flood-color="#64251c" flood-opacity="0.38"/>
+    </filter>
+    <path id="heart-leaf" d="M50 47C43 39 31 34 31 24C31 16 37 11 44 12C48 13 50 16 50 20C50 16 52 13 56 12C63 11 69 16 69 24C69 34 57 39 50 47Z"/>
+  </defs>
+  <g fill="#f3dfb4" stroke="#c49a65" stroke-width="1.35" stroke-linejoin="round" filter="url(#soft-shadow)">
+    <use href="#heart-leaf"/>
+    <use href="#heart-leaf" transform="rotate(90 50 50)"/>
+    <use href="#heart-leaf" transform="rotate(180 50 50)"/>
+    <use href="#heart-leaf" transform="rotate(270 50 50)"/>
+  </g>
+</svg>

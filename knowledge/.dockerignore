@@ -1,0 +1,15 @@
+.git
+.idea
+.vscode
+.venv
+__pycache__
+*.py[cod]
+*.log
+.env
+.env.*
+!.env.example
+.downloads
+evaluation/results
+processor/import_processor/input_dir
+processor/import_processor/output_dir
+temp_data

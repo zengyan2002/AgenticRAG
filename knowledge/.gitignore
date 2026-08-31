@@ -1,0 +1,12 @@
+# 本地环境变量与密钥
+.env
+.env.*
+!.env.example
+
+# 运行时上传与中间文件
+temp_data/
+
+# 私有测试与离线评测数据（仅保留在本地）
+tests/
+evaluation/benchmark.json
+evaluation/results/

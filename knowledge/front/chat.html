@@ -1,0 +1,2218 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+  <title>文档知识库</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" />
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+  <style>
+    :root{
+      --bg:#0f172a;
+      --panel:rgba(30, 41, 59, 0.7);
+      --text:#e2e8f0;
+      --muted:#94a3b8;
+      --brand:#38bdf2;
+      --brand2:#818cf8;
+      --bubble-user:linear-gradient(135deg, #38bdf8, #818cf8);
+      --bubble-bot:rgba(15, 23, 42, 0.6);
+      --border:rgba(255, 255, 255, 0.1);
+      --shadow:0 25px 50px -12px rgba(0, 0, 0, 0.5);
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family: "Segoe UI", "Microsoft YaHei", system-ui, -apple-system, Arial, sans-serif;
+      background-color: #0f172a;
+      background-image: radial-gradient(circle at 15% 50%, rgba(56, 189, 248, 0.08) 0%, transparent 50%),
+                        radial-gradient(circle at 85% 30%, rgba(129, 140, 248, 0.08) 0%, transparent 50%),
+                        linear-gradient(to right, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+                        linear-gradient(to bottom, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+      background-size: 100% 100%, 100% 100%, 40px 40px, 40px 40px;
+      color:var(--text);
+      height:100vh;
+      display:flex;
+      justify-content:center;
+      align-items:center;
+      padding:18px;
+    }
+    .app{
+      width:100%;
+      max-width:1240px;
+      height:min(820px, 92vh);
+      background:var(--panel);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      border:1px solid var(--border);
+      border-radius:16px;
+      box-shadow:var(--shadow);
+      overflow:hidden;
+      display:flex;
+      flex-direction:row;
+      position:relative;
+    }
+    .sidebar{
+      width:280px;
+      flex:0 0 280px;
+      min-width:0;
+      display:flex;
+      flex-direction:column;
+      border-right:1px solid var(--border);
+      background:rgba(15, 23, 42, 0.72);
+      position:relative;
+      z-index:20;
+    }
+    .sidebar-brand{
+      padding:18px 16px 14px;
+      border-bottom:1px solid var(--border);
+    }
+    .sidebar .brand{min-width:0}
+    .sidebar-new{
+      width:calc(100% - 28px);
+      margin:14px;
+      min-height:42px;
+      font-size:14px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      gap:7px;
+    }
+    .session-section-title{
+      padding:2px 16px 8px;
+      color:var(--muted);
+      font-size:12px;
+    }
+    .session-list{
+      flex:1;
+      overflow:auto;
+      padding:0 8px 12px;
+    }
+    .session-empty{
+      margin:14px 8px;
+      padding:18px 12px;
+      text-align:center;
+      color:var(--muted);
+      font-size:12px;
+      line-height:1.7;
+      border:1px dashed var(--border);
+      border-radius:12px;
+    }
+    .session-item{
+      display:flex;
+      align-items:center;
+      gap:4px;
+      margin:3px 0;
+      border:1px solid transparent;
+      border-radius:12px;
+      transition:background .15s ease, border-color .15s ease;
+    }
+    .session-item:hover{
+      background:rgba(56, 189, 248, 0.08);
+    }
+    .session-item.active{
+      background:rgba(56, 189, 248, 0.14);
+      border-color:rgba(56, 189, 248, 0.3);
+    }
+    .session-select{
+      flex:1;
+      min-width:0;
+      padding:10px 5px 10px 10px;
+      border:none;
+      color:inherit;
+      background:transparent;
+      text-align:left;
+      cursor:pointer;
+    }
+    .session-title{
+      overflow:hidden;
+      text-overflow:ellipsis;
+      white-space:nowrap;
+      font-size:13px;
+      color:var(--text);
+    }
+    .session-preview{
+      margin-top:4px;
+      overflow:hidden;
+      text-overflow:ellipsis;
+      white-space:nowrap;
+      font-size:11px;
+      color:var(--muted);
+    }
+    .session-actions{
+      display:flex;
+      flex:0 0 auto;
+      padding-right:5px;
+      opacity:0;
+      transition:opacity .15s ease;
+    }
+    .session-item:hover .session-actions,
+    .session-item.active .session-actions{
+      opacity:1;
+    }
+    .session-action{
+      width:27px;
+      height:27px;
+      border:none;
+      border-radius:7px;
+      color:var(--muted);
+      background:transparent;
+      cursor:pointer;
+    }
+    .session-action:hover{
+      color:var(--text);
+      background:rgba(255,255,255,.08);
+    }
+    .sidebar-import-wrap{
+      padding:12px 14px;
+      border-top:1px solid var(--border);
+    }
+    .sidebar-import{
+      width:100%;
+      min-height:40px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      gap:8px;
+      color:var(--text);
+      font-size:13px;
+      text-decoration:none;
+      border:1px solid var(--border);
+      border-radius:10px;
+      background:rgba(15, 23, 42, 0.6);
+      transition:background .15s ease, border-color .15s ease, color .15s ease;
+    }
+    .sidebar-import:hover{
+      color:#fff;
+      border-color:rgba(56, 189, 248, 0.55);
+      background:rgba(56, 189, 248, 0.12);
+    }
+    .sidebar-import-icon{
+      color:var(--brand);
+      font-size:17px;
+      line-height:1;
+    }
+    .sidebar-footer{
+      padding:10px 14px;
+      border-top:1px solid var(--border);
+      color:#64748b;
+      font-size:11px;
+      overflow:hidden;
+      text-overflow:ellipsis;
+      white-space:nowrap;
+    }
+    .main-panel{
+      flex:1;
+      min-width:0;
+      display:flex;
+      flex-direction:column;
+    }
+    .topbar{
+      display:flex;
+      align-items:center;
+      gap:12px;
+      padding:14px 18px;
+      border-bottom:1px solid var(--border);
+      background:rgba(15, 23, 42, 0.5);
+    }
+    .brand{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      min-width:240px;
+    }
+    .logo{
+      width:36px;height:36px;border-radius:10px;
+      background:linear-gradient(135deg, var(--brand), var(--brand2));
+      box-shadow:0 0 20px rgba(56, 189, 248, 0.4);
+    }
+    .title{
+      display:flex;
+      flex-direction:column;
+      line-height:1.1;
+    }
+    .title strong{font-size:14px}
+    .title span{font-size:12px;color:var(--muted);margin-top:3px}
+    .top-actions{
+      margin-left:auto;
+      display:flex;
+      gap:10px;
+      align-items:center;
+    }
+    .current-session{
+      min-width:0;
+      display:flex;
+      flex-direction:column;
+      line-height:1.2;
+    }
+    .current-session strong{
+      max-width:360px;
+      overflow:hidden;
+      text-overflow:ellipsis;
+      white-space:nowrap;
+      font-size:14px;
+    }
+    .current-session span{
+      margin-top:3px;
+      color:var(--muted);
+      font-size:11px;
+    }
+    .sidebar-toggle{
+      display:none;
+      width:36px;
+      height:36px;
+      padding:0;
+      flex:0 0 auto;
+    }
+    .sidebar-backdrop{display:none}
+    .pill{
+      font-size:12px;
+      color:var(--muted);
+      border:1px solid var(--border);
+      padding:6px 10px;
+      border-radius:999px;
+      background:rgba(15, 23, 42, 0.6);
+    }
+    .btn{
+      border:none;
+      background:linear-gradient(135deg, var(--brand), var(--brand2));
+      color:#fff;
+      padding:8px 12px;
+      border-radius:10px;
+      font-size:12px;
+      cursor:pointer;
+    }
+    .btn.secondary{
+      color:var(--text);
+      border:1px solid var(--border);
+      background:rgba(15, 23, 42, 0.6);
+    }
+    .btn.secondary:hover{
+      border-color:rgba(56, 189, 248, 0.55);
+      background:rgba(56, 189, 248, 0.12);
+    }
+    .btn:disabled{opacity:.6;cursor:not-allowed}
+
+    .chat{
+      flex:1;
+      overflow:auto;
+      padding:16px 14px 10px;
+      background:rgba(15, 23, 42, 0.3);
+    }
+    .dayline{
+      text-align:center;
+      color:var(--muted);
+      font-size:12px;
+      margin:6px 0 14px;
+    }
+    .msg{
+      display:flex;
+      gap:10px;
+      margin:10px 0;
+      align-items:flex-end;
+    }
+    .msg.bot{align-items:flex-start}
+    .msg.user{justify-content:flex-end}
+    /* 关键：只让“消息内容容器”(排除头像)在 flex 中可伸缩，避免被压到“1 个字宽”导致竖排换行 */
+    .msg > div:not(.avatar){
+      flex:1;
+      min-width:0;
+    }
+    .msg.user > div:not(.avatar){
+      display:flex;
+      flex-direction:column;
+      align-items:flex-end;
+    }
+    .avatar{
+      width:34px;height:34px;border-radius:10px;
+      background:rgba(56, 189, 248, 0.15);
+      display:flex;align-items:center;justify-content:center;
+      font-size:14px;
+      color:#94a3b8;
+      flex:0 0 auto;
+    }
+    .avatar.bot{
+      overflow:hidden;
+      background:linear-gradient(135deg, rgba(56, 189, 248, 0.2), rgba(129, 140, 248, 0.2));
+    }
+    .avatar-image{
+      display:block;
+      width:100%;
+      height:100%;
+      border-radius:inherit;
+      object-fit:cover;
+      object-position:center 32%;
+    }
+    .bubble{
+      max-width:min(720px, 76%);
+      display:inline-block;
+      border-radius:14px;
+      padding:10px 12px;
+      border:1px solid var(--border);
+      background:var(--bubble-bot);
+      position:relative;
+      line-height:1.55;
+      font-size:14px;
+      white-space:pre-wrap;
+      overflow-wrap: break-word;
+      color:#e2e8f0;
+    }
+    .msg.user .bubble{
+      background:var(--bubble-user);
+      color:#fff;
+      border-color:transparent;
+    }
+    .answer-text .katex-display{
+      max-width:100%;
+      margin:10px 0;
+      padding:4px 0;
+      overflow-x:auto;
+      overflow-y:hidden;
+    }
+    .answer-text .katex{
+      white-space:normal;
+    }
+    .meta{
+      font-size:11px;
+      color:var(--muted);
+      margin-top:6px;
+    }
+    .msg.user .meta{color:rgba(255,255,255,.85)}
+    details.progress{
+      margin-top:8px;
+      border:1px dashed rgba(56, 189, 248, 0.3);
+      border-radius:12px;
+      padding:8px 10px;
+      background:rgba(15, 23, 42, 0.4);
+    }
+    details.progress summary{
+      cursor:pointer;
+      user-select:none;
+      color:var(--muted);
+      font-size:12px;
+    }
+    .progress ul{margin:8px 0 0 18px;padding:0}
+    .progress li{margin:4px 0;font-size:12px;color:#94a3b8}
+
+    .answer-images{
+      margin-top:10px;
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+    }
+    .answer-images img{
+      display: block;
+      max-width: min(100%, 600px);
+      max-height: 600px;
+      width: auto;
+      height: auto;
+      border-radius:12px;
+      border:1px solid var(--border);
+      box-shadow:0 10px 24px rgba(0, 0, 0, 0.3);
+      background:rgba(15, 23, 42, 0.6);
+    }
+    .answer-images a{
+      font-size:12px;
+      color:var(--muted);
+      text-decoration:none;
+      word-break:break-all;
+    }
+
+    .typing{
+      display:inline-flex;gap:6px;align-items:center;
+    }
+    .dot{
+      width:7px;height:7px;border-radius:50%;
+      background:#38bdf8;
+      animation:bounce 1.2s infinite ease-in-out;
+    }
+    .dot:nth-child(2){animation-delay:.15s}
+    .dot:nth-child(3){animation-delay:.3s}
+    @keyframes bounce{
+      0%,80%,100%{transform:translateY(0);opacity:.6}
+      40%{transform:translateY(-5px);opacity:1}
+    }
+
+    .composer{
+      border-top:1px solid var(--border);
+      padding:12px 14px;
+      display:flex;
+      gap:10px;
+      align-items:flex-end;
+      background:rgba(15, 23, 42, 0.5);
+    }
+    .attach-button{
+      width:44px;
+      height:44px;
+      flex:0 0 44px;
+      border:1px solid var(--border);
+      border-radius:12px;
+      background:rgba(15, 23, 42, 0.6);
+      color:var(--text);
+      cursor:pointer;
+      font-size:20px;
+      line-height:1;
+    }
+    .attach-button:hover{border-color:rgba(56,189,248,.6);color:var(--brand)}
+    .attach-button:disabled{opacity:.55;cursor:not-allowed}
+    .query-image-preview{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      min-height:58px;
+      padding:8px 16px;
+      border-top:1px solid var(--border);
+      background:rgba(15,23,42,.5);
+    }
+    .query-image-preview[hidden]{display:none}
+    .query-image-preview img{
+      width:48px;
+      height:48px;
+      object-fit:cover;
+      border:1px solid var(--border);
+      border-radius:6px;
+    }
+    .query-image-name{
+      min-width:0;
+      flex:1;
+      overflow:hidden;
+      text-overflow:ellipsis;
+      white-space:nowrap;
+      font-size:13px;
+      color:var(--muted);
+    }
+    .remove-query-image{
+      width:32px;
+      height:32px;
+      border:1px solid var(--border);
+      border-radius:8px;
+      background:transparent;
+      color:var(--muted);
+      cursor:pointer;
+      font-size:18px;
+    }
+    .user-query-image{
+      display:block;
+      width:min(280px, 100%);
+      max-height:220px;
+      margin-bottom:8px;
+      object-fit:contain;
+      border-radius:6px;
+      background:rgba(255,255,255,.08);
+    }
+    textarea{
+      flex:1;
+      min-width:0;
+      resize:none;
+      min-height:44px;
+      max-height:140px;
+      padding:10px 12px;
+      border-radius:12px;
+      border:1px solid var(--border);
+      outline:none;
+      font-size:14px;
+      line-height:1.5;
+      background:rgba(15, 23, 42, 0.6);
+      color:#e2e8f0;
+    }
+    textarea:focus{border-color:rgba(56, 189, 248, 0.6); box-shadow:0 0 0 3px rgba(56, 189, 248, 0.15)}
+    textarea::placeholder{color:#64748b}
+    .send{
+      width:88px;
+      height:44px;
+      border:none;
+      border-radius:12px;
+      cursor:pointer;
+      font-size:14px;
+      color:#fff;
+      background:linear-gradient(135deg, var(--brand), var(--brand2));
+      box-shadow:0 0 15px rgba(56, 189, 248, 0.3);
+    }
+    .send:disabled{opacity:.6;cursor:not-allowed}
+    .hint{
+      padding:0 14px 12px;
+      color:var(--muted);
+      font-size:12px;
+      background:transparent;
+    }
+    .kbd{
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      border:1px solid var(--border);
+      padding:1px 6px;
+      border-radius:6px;
+      background:rgba(15, 23, 42, 0.6);
+      color:#94a3b8;
+    }
+
+    @media (max-width: 760px){
+      body{padding:0}
+      .app{
+        height:100vh;
+        max-width:none;
+        border-radius:0;
+        border-left:none;
+        border-right:none;
+      }
+      .sidebar{
+        position:absolute;
+        inset:0 auto 0 0;
+        width:min(82vw, 300px);
+        transform:translateX(-102%);
+        transition:transform .2s ease;
+        box-shadow:18px 0 35px rgba(0,0,0,.35);
+      }
+      .sidebar.open{transform:translateX(0)}
+      .sidebar-backdrop{
+        display:block;
+        position:fixed;
+        inset:0;
+        z-index:15;
+        border:none;
+        background:rgba(2, 6, 23, .62);
+        opacity:0;
+        pointer-events:none;
+        transition:opacity .2s ease;
+      }
+      .sidebar-backdrop.open{
+        opacity:1;
+        pointer-events:auto;
+      }
+      .sidebar-toggle{display:block}
+      .topbar{padding:10px 12px}
+      .top-actions{gap:6px}
+      .top-actions label{
+        display:none !important;
+      }
+      .top-actions .btn{padding-left:9px;padding-right:9px;white-space:nowrap}
+      .current-session strong{max-width:150px}
+      .chat{padding-left:10px;padding-right:10px}
+      .composer{padding-left:10px;padding-right:10px}
+      .send{width:72px}
+    }
+    /* ===== 红金纸张主题：参考设计稿的视觉语言，保持页面响应式与可交互 ===== */
+    :root{
+      --bg:#091528;
+      --panel:#f7ead1;
+      --text:#4a2b20;
+      --muted:#8f705c;
+      --brand:#d24a31;
+      --brand2:#9f271f;
+      --bubble-user:linear-gradient(145deg, #d44b32, #a82a21);
+      --bubble-bot:linear-gradient(145deg, #fff9eb, #f7e8cb);
+      --border:rgba(160, 97, 44, .28);
+      --shadow:0 28px 70px rgba(1, 8, 22, .58), 0 0 0 1px rgba(247, 208, 139, .18);
+      --paper:#fbefd9;
+      --paper-deep:#f0d6ae;
+      --ink:#4a291d;
+      --gold:#d4a04a;
+      --gold-dark:#a96e25;
+      --navy:#111c36;
+      --navy-soft:#1b2948;
+    }
+    body{
+      font-family:"Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif;
+      background-color:#081426;
+      background-image:
+        radial-gradient(circle at 50% 0%, rgba(61, 91, 139, .25), transparent 42%),
+        radial-gradient(circle at 12% 85%, rgba(176, 85, 48, .08), transparent 35%),
+        linear-gradient(rgba(255,255,255,.025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,.025) 1px, transparent 1px);
+      background-size:100% 100%, 100% 100%, 42px 42px, 42px 42px;
+      color:var(--ink);
+      padding:20px;
+    }
+    body::before,
+    body::after{
+      position:fixed;
+      color:#d19747;
+      opacity:.55;
+      pointer-events:none;
+      z-index:0;
+      text-shadow:0 0 14px rgba(222, 147, 65, .35);
+    }
+    body::before{content:"✦";left:4.5%;top:13%;font-size:20px}
+    body::after{
+      content:"";
+      right:4%;
+      bottom:14%;
+      width:34px;
+      height:34px;
+      background:url("assets/images/klee-clover.svg") center/contain no-repeat;
+      filter:drop-shadow(0 0 8px rgba(222, 147, 65, .3));
+    }
+    .app{
+      max-width:1480px;
+      height:min(900px, 94vh);
+      border:2px solid rgba(207, 151, 74, .72);
+      border-radius:26px;
+      background:
+        radial-gradient(circle at 12% 18%, rgba(255,255,255,.72), transparent 26%),
+        repeating-linear-gradient(0deg, rgba(135,78,34,.018) 0, rgba(135,78,34,.018) 1px, transparent 1px, transparent 4px),
+        linear-gradient(145deg, #fff7e6, #f1d8b4);
+      box-shadow:var(--shadow);
+      isolation:isolate;
+    }
+    .app::before,
+    .app::after{
+      content:"";
+      position:absolute;
+      z-index:40;
+      width:82px;
+      height:82px;
+      pointer-events:none;
+      background:linear-gradient(135deg, #8f241d, #d24d32 52%, #7e1e1c 53%, #b43227);
+      box-shadow:0 3px 10px rgba(78, 29, 20, .35);
+    }
+    .app::before{
+      top:-25px;
+      left:-25px;
+      clip-path:polygon(0 0, 100% 0, 32% 32%, 0 100%);
+    }
+    .app::after{
+      right:-25px;
+      bottom:-25px;
+      clip-path:polygon(100% 0, 100% 100%, 0 100%, 68% 68%);
+    }
+    .sidebar{
+      width:310px;
+      flex-basis:310px;
+      border-right:2px solid rgba(171, 111, 45, .28);
+      background:
+        radial-gradient(circle at 25% 78%, rgba(215, 167, 91, .12), transparent 22%),
+        repeating-linear-gradient(90deg, rgba(140,83,38,.018) 0, rgba(140,83,38,.018) 1px, transparent 1px, transparent 5px),
+        linear-gradient(160deg, #fff8e8, #f5dfbd);
+      color:var(--ink);
+    }
+    .sidebar::after{
+      content:"";
+      position:absolute;
+      left:62px;
+      bottom:155px;
+      width:128px;
+      height:128px;
+      background:url("assets/images/klee-clover.svg") center/contain no-repeat;
+      opacity:.055;
+      transform:rotate(-14deg);
+      pointer-events:none;
+    }
+    .sidebar > *{position:relative;z-index:1}
+    .sidebar-brand{
+      padding:23px 20px 18px;
+      border-bottom:1px solid rgba(173, 111, 42, .22);
+    }
+    .logo{
+      width:48px;
+      height:48px;
+      display:grid;
+      place-items:center;
+      border:2px solid #e0b564;
+      border-radius:13px;
+      background:linear-gradient(145deg, #d75135, #9b281f);
+      box-shadow:0 4px 12px rgba(112, 39, 27, .28), inset 0 1px 0 rgba(255,255,255,.35);
+    }
+    .logo::after{
+      content:"";
+      width:29px;
+      height:29px;
+      background:url("assets/images/klee-clover.svg") center/contain no-repeat;
+      filter:drop-shadow(0 1px 0 #7a281e);
+    }
+    .title strong,
+    .current-session strong{
+      color:var(--ink);
+      font-family:"STKaiti", "KaiTi", "Microsoft YaHei", sans-serif;
+      font-weight:700;
+    }
+    .title strong{font-size:17px}
+    .title span,
+    .current-session span{color:#846650}
+    .sidebar-new{
+      min-height:50px;
+      margin:17px 16px 19px;
+      width:calc(100% - 32px);
+      border:2px solid #9b2b22;
+      border-radius:18px;
+      color:#fff6dd;
+      font-family:"STKaiti", "KaiTi", "Microsoft YaHei", sans-serif;
+      font-size:16px;
+      font-weight:700;
+      background:linear-gradient(180deg, #df5438, #b32f25);
+      box-shadow:0 4px 0 #7f241e, 0 7px 16px rgba(110,37,26,.22), inset 0 1px 0 rgba(255,255,255,.38);
+    }
+    .sidebar-new:hover{
+      filter:brightness(1.05);
+      transform:translateY(-1px);
+    }
+    .session-section-title{
+      display:flex;
+      align-items:center;
+      gap:9px;
+      padding:0 18px 10px;
+      color:#8a674d;
+      font-family:"STKaiti", "KaiTi", sans-serif;
+      font-size:13px;
+    }
+    .session-section-title::before{content:"❀";color:#bc8134}
+    .session-section-title::after{content:"";height:1px;flex:1;background:linear-gradient(90deg, #c89b5d, transparent)}
+    .session-list{padding:0 10px 14px}
+    .session-empty{
+      color:#96745c;
+      border-color:rgba(173, 114, 49, .35);
+      background:rgba(255,250,238,.5);
+    }
+    .session-item{
+      margin:6px 0;
+      border:1px solid rgba(176, 112, 45, .24);
+      border-radius:15px;
+      background:linear-gradient(145deg, rgba(255,250,238,.92), rgba(247,227,194,.82));
+      box-shadow:0 3px 9px rgba(104, 67, 36, .06);
+    }
+    .session-item:hover{
+      border-color:rgba(183, 112, 39, .52);
+      background:linear-gradient(145deg, #fff9e8, #f4dbb4);
+    }
+    .session-item.active{
+      border-color:#9d2d23;
+      background:linear-gradient(145deg, #d74731, #a92b23);
+      box-shadow:0 3px 0 #7b241e, 0 7px 14px rgba(112,39,29,.16), inset 0 1px 0 rgba(255,255,255,.28);
+    }
+    .session-select{padding:12px 6px 12px 12px}
+    .session-title{color:#553124;font-family:"STKaiti", "KaiTi", "Microsoft YaHei", sans-serif;font-weight:700;font-size:14px}
+    .session-preview{color:#98735a}
+    .session-item.active .session-title{color:#fff8df}
+    .session-item.active .session-preview{color:#f4d7b5}
+    .session-action{color:#9a7557}
+    .session-item.active .session-action{color:#ffe8b5}
+    .session-action:hover{color:#fff;background:rgba(83,27,20,.18)}
+    .sidebar-import-wrap{
+      padding:13px 16px;
+      border-top:1px solid rgba(169, 107, 42, .22);
+    }
+    .sidebar-import{
+      min-height:46px;
+      border:2px solid #d2a04b;
+      border-radius:17px;
+      color:#fff4d3;
+      font-family:"STKaiti", "KaiTi", "Microsoft YaHei", sans-serif;
+      font-size:15px;
+      font-weight:700;
+      background:linear-gradient(160deg, #243456, #111c36);
+      box-shadow:0 4px 0 #0b1326, 0 7px 14px rgba(10,18,37,.22), inset 0 1px 0 rgba(255,255,255,.16);
+    }
+    .sidebar-import:hover{
+      color:#fff8de;
+      border-color:#e1b55e;
+      background:linear-gradient(160deg, #30466f, #172541);
+      transform:translateY(-1px);
+    }
+    .sidebar-import-icon{color:#ffd784;text-shadow:0 1px 0 #7b451c}
+    .sidebar-footer{
+      padding:12px 17px;
+      border-top:1px solid rgba(169, 107, 42, .18);
+      color:#97745a;
+      background:rgba(249, 229, 196, .42);
+    }
+    .main-panel{background:linear-gradient(180deg, #fbefd8, #f3dcba)}
+    .topbar{
+      min-height:84px;
+      padding:14px 22px;
+      border-bottom:2px solid rgba(169, 107, 42, .28);
+      background:
+        radial-gradient(circle at 90% 20%, rgba(215,163,79,.1), transparent 18%),
+        linear-gradient(180deg, #fff8e9, #f6e0bf);
+    }
+    .current-session strong{font-size:18px}
+    .top-actions label{color:#775540 !important;font-family:"STKaiti", "KaiTi", sans-serif;font-size:14px !important}
+    #streamToggle{
+      appearance:none;
+      width:42px;
+      height:23px;
+      margin:0 2px 0 0;
+      border:2px solid #a96e25;
+      border-radius:999px;
+      background:#ead2a8;
+      box-shadow:inset 0 2px 4px rgba(103,57,24,.22);
+      position:relative;
+      cursor:pointer;
+      transition:.2s ease;
+    }
+    #streamToggle::after{
+      content:"✦";
+      position:absolute;
+      width:17px;
+      height:17px;
+      top:1px;
+      left:2px;
+      display:grid;
+      place-items:center;
+      border-radius:50%;
+      color:#d49a40;
+      font-size:10px;
+      background:#fff7df;
+      box-shadow:0 1px 4px rgba(91,48,21,.3);
+      transition:.2s ease;
+    }
+    #streamToggle:checked{background:linear-gradient(180deg,#d85135,#af3025)}
+    #streamToggle:checked::after{transform:translateX(17px);color:#b43829}
+    .topbar .btn:not(.sidebar-toggle){
+      min-height:40px;
+      padding:8px 18px;
+      border:2px solid #9d3025;
+      border-radius:14px;
+      color:#fff7df;
+      font-family:"STKaiti", "KaiTi", sans-serif;
+      font-size:14px;
+      font-weight:700;
+      background:linear-gradient(180deg,#d74b34,#a92c23);
+      box-shadow:0 3px 0 #7c241e, 0 5px 10px rgba(101,32,24,.18), inset 0 1px 0 rgba(255,255,255,.3);
+    }
+    .chat{
+      position:relative;
+      padding:22px 24px 16px;
+      color:#f7e9d1;
+      background-color:var(--navy);
+      background-image:
+        radial-gradient(circle at 85% 82%, rgba(190,118,63,.09), transparent 24%),
+        linear-gradient(45deg, rgba(255,255,255,.018) 25%, transparent 25%, transparent 75%, rgba(255,255,255,.018) 75%),
+        linear-gradient(-45deg, rgba(255,255,255,.014) 25%, transparent 25%, transparent 75%, rgba(255,255,255,.014) 75%);
+      background-size:100% 100%, 28px 28px, 28px 28px;
+      box-shadow:inset 0 0 0 2px rgba(207,155,80,.22), inset 0 0 40px rgba(0,0,0,.18);
+    }
+    .chat::after{
+      content:"";
+      position:absolute;
+      right:34px;
+      bottom:24px;
+      width:245px;
+      height:138px;
+      background:url("assets/images/dodoco-watermark.png") center/contain no-repeat;
+      opacity:.09;
+      filter:grayscale(.25) sepia(.12);
+      pointer-events:none;
+      z-index:0;
+    }
+    .chat > *{position:relative;z-index:1}
+    .dayline{
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      gap:12px;
+      color:#bca98d;
+      font-family:"STKaiti", "KaiTi", sans-serif;
+    }
+    .dayline::before,
+    .dayline::after{content:"✦";color:#c89a4d;text-shadow:25px 0 0 rgba(200,154,77,.25)}
+    .avatar{
+      width:42px;
+      height:42px;
+      border:2px solid rgba(218,170,90,.65);
+      border-radius:50%;
+      color:#6b3e2c;
+      font-size:12px;
+      font-weight:700;
+      background:linear-gradient(145deg,#fff3d4,#e8bd76);
+      box-shadow:0 3px 9px rgba(0,0,0,.24);
+    }
+    .avatar.bot{background:linear-gradient(145deg,#fff3d5,#e9bd75);color:#713e2c}
+    .msg.user .avatar{background:linear-gradient(145deg,#d94e35,#9e2a22);color:#fff4d6}
+    .bubble{
+      border:1px solid #d4a760;
+      border-radius:15px;
+      color:#4c2b20;
+      background:var(--bubble-bot);
+      box-shadow:0 5px 16px rgba(2,7,18,.22), inset 0 1px 0 rgba(255,255,255,.6);
+    }
+    .msg.bot .bubble::before{
+      content:"";
+      position:absolute;
+      left:-8px;
+      top:13px;
+      width:14px;
+      height:14px;
+      border-left:1px solid #d4a760;
+      border-bottom:1px solid #d4a760;
+      background:#fbefd7;
+      transform:rotate(45deg);
+    }
+    .msg.user .bubble{
+      border:1px solid #e1ae62;
+      color:#fff7df;
+      background:var(--bubble-user);
+      box-shadow:0 4px 0 rgba(105,29,22,.6), 0 7px 16px rgba(0,0,0,.2);
+    }
+    .meta{color:#ae9b82}
+    .msg.user .meta{color:#dbc4a4}
+    details.progress{
+      border-color:rgba(163,93,43,.38);
+      background:rgba(255,246,224,.66);
+    }
+    details.progress summary{color:#84563b}
+    .progress li{color:#79513a}
+    .answer-images img{border-color:#c89443;box-shadow:0 9px 24px rgba(63,31,19,.22)}
+    .answer-images a{color:#a86c2e}
+    .dot{background:#c94831}
+    .composer{
+      padding:12px 16px;
+      border-top:2px solid rgba(170,108,42,.3);
+      background:linear-gradient(180deg,#f9e7c9,#f3d8ad);
+    }
+    .attach-button{
+      width:58px;
+      height:58px;
+      flex-basis:58px;
+      border:2px solid rgba(184,119,45,.43);
+      border-radius:17px;
+      color:#9f2f25;
+      background:#fff8e9;
+    }
+    .attach-button:hover{border-color:#ca8b38;color:#7f211d;background:#fff3d7}
+    .query-image-preview{
+      border-top:2px solid rgba(170,108,42,.3);
+      background:#f8e3c2;
+    }
+    .query-image-preview img{border-color:#c89443;background:#fff8e9}
+    .remove-query-image{border-color:rgba(184,119,45,.43);color:#8e3427}
+    textarea{
+      min-height:58px;
+      border:2px solid rgba(184,119,45,.43);
+      border-radius:17px;
+      color:#513126;
+      background:
+        repeating-linear-gradient(0deg, rgba(139,81,36,.018) 0, rgba(139,81,36,.018) 1px, transparent 1px, transparent 4px),
+        #fff8e9;
+      box-shadow:inset 0 2px 6px rgba(119,69,28,.08);
+    }
+    textarea:focus{border-color:#ca8b38;box-shadow:0 0 0 3px rgba(202,139,56,.16), inset 0 2px 6px rgba(119,69,28,.06)}
+    textarea::placeholder{color:#b29a83}
+    .send{
+      width:104px;
+      height:58px;
+      border:2px solid #9f2f25;
+      border-radius:17px;
+      color:#fff7dc;
+      font-family:"STKaiti", "KaiTi", sans-serif;
+      font-size:17px;
+      font-weight:700;
+      background:linear-gradient(180deg,#d94e35,#ab2c23);
+      box-shadow:0 4px 0 #7d241e, 0 7px 14px rgba(102,32,24,.2), inset 0 1px 0 rgba(255,255,255,.35);
+    }
+    .send:hover{filter:brightness(1.06);transform:translateY(-1px)}
+    .hint{
+      padding:2px 17px 11px;
+      color:#76543d;
+      background:linear-gradient(180deg,#f3d8ad,#f8e6c8);
+    }
+    .kbd{
+      border-color:rgba(161,96,39,.35);
+      color:#704b36;
+      background:#fff2d7;
+      box-shadow:0 1px 0 rgba(137,78,30,.18);
+    }
+    .chat::-webkit-scrollbar,.session-list::-webkit-scrollbar{width:8px}
+    .chat::-webkit-scrollbar-track,.session-list::-webkit-scrollbar-track{background:rgba(102,70,42,.08)}
+    .chat::-webkit-scrollbar-thumb{background:#9e7444;border-radius:9px}
+    .session-list::-webkit-scrollbar-thumb{background:#c99a5a;border-radius:9px}
+
+    @media (max-width:760px){
+      body{padding:0}
+      .app{height:100vh;border-radius:0;border-width:0;max-width:none}
+      .app::before,.app::after{display:none}
+      .sidebar{width:min(84vw,310px)}
+      .topbar{min-height:66px;padding:9px 11px}
+      .sidebar-toggle{
+        color:#fff2d3 !important;
+        border:1px solid #9e3026 !important;
+        background:linear-gradient(180deg,#d54a33,#aa2d24) !important;
+      }
+      .current-session strong{max-width:145px;font-size:15px}
+      .chat{padding:15px 10px 10px}
+      .chat::after{right:12px;bottom:24px;width:165px;height:94px}
+      .avatar{width:35px;height:35px;font-size:10px}
+      .bubble{max-width:86%}
+      .composer{padding:10px}
+      .attach-button{width:48px;height:48px;flex-basis:48px;border-radius:14px}
+      textarea{min-height:48px}
+      .send{width:76px;height:48px;font-size:15px}
+      .hint{padding-left:11px;padding-right:11px}
+    }
+  </style>
+</head>
+<body>
+  <button class="sidebar-backdrop" id="sidebarBackdrop" aria-label="关闭会话列表"></button>
+  <div class="app">
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-brand">
+        <div class="brand">
+          <div class="logo"></div>
+          <div class="title">
+            <strong>文档知识库</strong>
+            <span id="subTitle">可查询知识库中的文档信息</span>
+          </div>
+        </div>
+      </div>
+      <button class="btn sidebar-new" id="btnNewSession"><span>＋</span> 新建会话</button>
+      <div class="session-section-title">最近会话</div>
+      <div class="session-list" id="sessionList">
+        <div class="session-empty">正在加载会话列表…</div>
+      </div>
+      <div class="sidebar-import-wrap">
+        <a class="sidebar-import" id="importDocumentLink" target="_blank" rel="noopener noreferrer">
+          <span class="sidebar-import-icon">⇧</span>
+          <span>导入文档</span>
+        </a>
+      </div>
+      <div class="sidebar-footer" id="clientLabel"></div>
+    </aside>
+
+    <main class="main-panel">
+      <div class="topbar">
+        <button class="btn secondary sidebar-toggle" id="btnSidebarToggle" aria-label="打开会话列表">☰</button>
+        <div class="current-session">
+          <strong id="currentSessionTitle">新会话</strong>
+          <span>选择左侧会话可继续聊天</span>
+        </div>
+        <div class="top-actions">
+          <label style="font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer;user-select:none;color:var(--muted);margin-right:10px;">
+            <input type="checkbox" id="streamToggle" checked> 流式输出
+          </label>
+          <button class="btn" id="btnClear">清空对话</button>
+        </div>
+      </div>
+
+      <div class="chat" id="chat">
+        <div class="dayline">今天</div>
+        <div class="msg bot">
+          <div class="avatar bot"><img class="avatar-image" src="assets/images/wenqi-avatar.png" alt="问器"></div>
+          <div>
+            <div class="bubble">你好，我是文档知识库助手。你可以直接提问，我会在“阶段进度”里展示处理过程。</div>
+            <div class="meta">提示：可以问“结合公式讲讲JDL算法流程”</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="query-image-preview" id="queryImagePreview" hidden>
+        <img id="queryImageThumb" alt="待检索图片预览">
+        <span class="query-image-name" id="queryImageName"></span>
+        <button class="remove-query-image" id="removeQueryImage" type="button" title="移除图片" aria-label="移除图片">×</button>
+      </div>
+      <div class="composer">
+        <input id="queryImageInput" type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/bmp" hidden>
+        <button class="attach-button" id="attachImage" type="button" title="选择查询图片" aria-label="选择查询图片">📎</button>
+        <textarea id="input" placeholder="请输入问题（Enter 发送，Shift+Enter 换行）"></textarea>
+        <button class="send" id="send">发送</button>
+      </div>
+      <div class="hint">快捷键：<span class="kbd">Enter</span> 发送，<span class="kbd">Shift</span>+<span class="kbd">Enter</span> 换行</div>
+    </main>
+  </div>
+
+  <script>
+    // 查询服务固定运行在 18001；保留当前主机名，方便本机和局域网访问。
+    // 直接通过 file:// 打开页面时，回退到本机查询服务。
+    const API_BASE = (() => {
+      if(location.protocol !== 'http:' && location.protocol !== 'https:'){
+        return 'http://127.0.0.1:18001';
+      }
+      const apiUrl = new URL(location.origin);
+      apiUrl.port = '18001';
+      return apiUrl.origin;
+    })();
+    const IMPORT_PAGE_URL = (() => {
+      if(location.protocol !== 'http:' && location.protocol !== 'https:'){
+        return 'http://127.0.0.1:18000/front/import.html';
+      }
+      const importUrl = new URL(location.origin);
+      importUrl.port = '18000';
+      importUrl.pathname = '/front/import.html';
+      return importUrl.href;
+    })();
+    const chatEl = document.getElementById('chat');
+    const inputEl = document.getElementById('input');
+    const sendBtn = document.getElementById('send');
+    const attachImageBtn = document.getElementById('attachImage');
+    const queryImageInput = document.getElementById('queryImageInput');
+    const queryImagePreview = document.getElementById('queryImagePreview');
+    const queryImageThumb = document.getElementById('queryImageThumb');
+    const queryImageName = document.getElementById('queryImageName');
+    const removeQueryImageBtn = document.getElementById('removeQueryImage');
+    const btnNewSession = document.getElementById('btnNewSession');
+    const btnClear = document.getElementById('btnClear');
+    const streamToggle = document.getElementById('streamToggle');
+    const sessionListEl = document.getElementById('sessionList');
+    const currentSessionTitleEl = document.getElementById('currentSessionTitle');
+    const clientLabelEl = document.getElementById('clientLabel');
+    const sidebarEl = document.getElementById('sidebar');
+    const sidebarBackdropEl = document.getElementById('sidebarBackdrop');
+    const btnSidebarToggle = document.getElementById('btnSidebarToggle');
+    const importDocumentLink = document.getElementById('importDocumentLink');
+    importDocumentLink.href = IMPORT_PAGE_URL;
+    let selectedQueryImage = null;
+    let selectedQueryImageUrl = '';
+
+    // 会话 ID 和匿名客户端 ID 都由前端生成；后端负责保存会话目录和消息。
+    function createSessionId(){
+      return 'sess-' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+    }
+
+    function createClientId(){
+      return 'client-' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+    }
+
+    let clientId = localStorage.getItem('kb_client_id');
+    if(!clientId){
+      clientId = createClientId();
+      localStorage.setItem('kb_client_id', clientId);
+    }
+
+    let sessionId = localStorage.getItem('kb_session_id');
+    if (!sessionId) {
+      sessionId = createSessionId();
+      localStorage.setItem('kb_session_id', sessionId);
+    }
+    let sessionItems = [];
+    clientLabelEl.textContent = `客户端：${clientId.slice(-12)}`;
+
+    function scrollToBottom(){
+      chatEl.scrollTop = chatEl.scrollHeight;
+    }
+    function resetChatView(){
+      // 保留页面内置的首条欢迎消息，移除当前会话的其余消息。
+      const nodes = Array.from(chatEl.querySelectorAll('.msg'));
+      for(let i = 1; i < nodes.length; i++){
+        nodes[i].remove();
+      }
+      scrollToBottom();
+    }
+
+    function openSidebar(){
+      sidebarEl.classList.add('open');
+      sidebarBackdropEl.classList.add('open');
+    }
+
+    function closeSidebar(){
+      sidebarEl.classList.remove('open');
+      sidebarBackdropEl.classList.remove('open');
+    }
+
+    function setSessionControlsDisabled(disabled){
+      btnNewSession.disabled = disabled;
+      btnClear.disabled = disabled;
+      sendBtn.disabled = disabled;
+      attachImageBtn.disabled = disabled;
+      queryImageInput.disabled = disabled;
+    }
+
+    function normalizeSessionItem(item){
+      return {
+        session_id: String(item && item.session_id || ''),
+        title: String(item && item.title || '新会话'),
+        owner_id: String(item && item.owner_id || clientId),
+        created_at: Number(item && item.created_at || 0),
+        updated_at: Number(item && item.updated_at || 0),
+        last_message: String(item && item.last_message || ''),
+      };
+    }
+
+    function sortSessionItems(){
+      sessionItems.sort((a, b) => Number(b.updated_at || 0) - Number(a.updated_at || 0));
+    }
+
+    function activeSessionItem(){
+      return sessionItems.find(item => item.session_id === sessionId) || null;
+    }
+
+    function renderSessionList(){
+      sortSessionItems();
+      sessionListEl.textContent = '';
+
+      if(sessionItems.length === 0){
+        const empty = document.createElement('div');
+        empty.className = 'session-empty';
+        empty.textContent = '暂无会话，点击“新建会话”开始提问。';
+        sessionListEl.appendChild(empty);
+      }
+
+      for(const session of sessionItems){
+        const itemEl = document.createElement('div');
+        itemEl.className = `session-item${session.session_id === sessionId ? ' active' : ''}`;
+        itemEl.dataset.sessionId = session.session_id;
+
+        const selectBtn = document.createElement('button');
+        selectBtn.type = 'button';
+        selectBtn.className = 'session-select';
+        selectBtn.dataset.action = 'select';
+        selectBtn.title = session.title;
+
+        const titleEl = document.createElement('div');
+        titleEl.className = 'session-title';
+        titleEl.textContent = session.title || '新会话';
+
+        const previewEl = document.createElement('div');
+        previewEl.className = 'session-preview';
+        previewEl.textContent = session.last_message || '暂无消息';
+
+        selectBtn.append(titleEl, previewEl);
+
+        const actionWrap = document.createElement('div');
+        actionWrap.className = 'session-actions';
+
+        const renameBtn = document.createElement('button');
+        renameBtn.type = 'button';
+        renameBtn.className = 'session-action';
+        renameBtn.dataset.action = 'rename';
+        renameBtn.title = '重命名';
+        renameBtn.textContent = '✎';
+
+        const deleteBtn = document.createElement('button');
+        deleteBtn.type = 'button';
+        deleteBtn.className = 'session-action';
+        deleteBtn.dataset.action = 'delete';
+        deleteBtn.title = '删除会话';
+        deleteBtn.textContent = '×';
+
+        actionWrap.append(renameBtn, deleteBtn);
+        itemEl.append(selectBtn, actionWrap);
+        sessionListEl.appendChild(itemEl);
+      }
+
+      const active = activeSessionItem();
+      currentSessionTitleEl.textContent = active ? active.title : '新会话';
+    }
+
+    async function readApiError(res, fallback){
+      try{
+        const data = await res.json();
+        return data.detail || data.message || fallback;
+      }catch(_){
+        return fallback;
+      }
+    }
+
+    async function registerSession(newSessionId, title = '新会话'){
+      const res = await fetch(`${API_BASE}/sessions`, {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({
+          session_id: newSessionId,
+          owner_id: clientId,
+          title,
+        }),
+      });
+      if(!res.ok){
+        throw new Error(await readApiError(res, `创建会话失败（HTTP ${res.status}）`));
+      }
+      return normalizeSessionItem(await res.json());
+    }
+
+    async function fetchSessionItems(){
+      const res = await fetch(`${API_BASE}/sessions?owner_id=${encodeURIComponent(clientId)}`);
+      if(!res.ok){
+        throw new Error(await readApiError(res, `读取会话列表失败（HTTP ${res.status}）`));
+      }
+      const data = await res.json();
+      return (Array.isArray(data.items) ? data.items : []).map(normalizeSessionItem);
+    }
+
+    function updateActiveSessionFromMessage(text){
+      const active = activeSessionItem();
+      if(!active) return;
+
+      const summaryText = String(text || '').replace(/\s+/g, ' ').trim();
+      active.last_message = summaryText;
+      active.updated_at = Date.now() / 1000;
+      if(!active.title || active.title === '新会话'){
+        active.title = summaryText.length <= 20 ? summaryText : `${summaryText.slice(0, 20)}…`;
+      }
+      renderSessionList();
+    }
+
+    async function switchSession(nextSessionId){
+      if(nextSessionId === sessionId){
+        closeSidebar();
+        return;
+      }
+      if(sendBtn.disabled){
+        alert('当前问题仍在处理中，请等待回答完成后再切换会话');
+        return;
+      }
+
+      setSessionControlsDisabled(true);
+      sessionId = nextSessionId;
+      localStorage.setItem('kb_session_id', sessionId);
+      resetChatView();
+      renderSessionList();
+      closeSidebar();
+
+      try{
+        await loadHistory(sessionId);
+      }finally{
+        setSessionControlsDisabled(false);
+        inputEl.focus();
+      }
+    }
+
+    async function createNewSession(needConfirm = true){
+      if(sendBtn.disabled){
+        alert('当前问题仍在处理中，请等待回答完成后再新建会话');
+        return;
+      }
+      if(needConfirm && !confirm('确定要新建会话吗？当前会话的历史记录会保留。')){
+        return;
+      }
+
+      setSessionControlsDisabled(true);
+      try{
+        const newSessionId = createSessionId();
+        const created = await registerSession(newSessionId);
+        sessionItems.unshift(created);
+        sessionId = newSessionId;
+        localStorage.setItem('kb_session_id', sessionId);
+        inputEl.value = '';
+        resetChatView();
+        renderSessionList();
+        closeSidebar();
+      }catch(e){
+        console.error('Failed to create session', e);
+        alert(`新建会话失败：${e.message || e}`);
+      }finally{
+        setSessionControlsDisabled(false);
+        inputEl.focus();
+      }
+    }
+
+    async function renameSessionById(targetSessionId){
+      if(sendBtn.disabled){
+        alert('当前问题仍在处理中，请稍后再修改会话');
+        return;
+      }
+      const target = sessionItems.find(item => item.session_id === targetSessionId);
+      if(!target) return;
+
+      const title = prompt('请输入新的会话标题', target.title || '新会话');
+      if(title === null) return;
+      const cleanTitle = title.trim();
+      if(!cleanTitle){
+        alert('会话标题不能为空');
+        return;
+      }
+
+      try{
+        const res = await fetch(`${API_BASE}/sessions/${encodeURIComponent(targetSessionId)}`, {
+          method: 'PATCH',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({owner_id: clientId, title: cleanTitle}),
+        });
+        if(!res.ok){
+          throw new Error(await readApiError(res, `重命名失败（HTTP ${res.status}）`));
+        }
+        const updated = normalizeSessionItem(await res.json());
+        sessionItems = sessionItems.map(item => item.session_id === targetSessionId ? updated : item);
+        renderSessionList();
+      }catch(e){
+        console.error('Failed to rename session', e);
+        alert(`重命名失败：${e.message || e}`);
+      }
+    }
+
+    async function deleteSessionById(targetSessionId){
+      if(sendBtn.disabled){
+        alert('当前问题仍在处理中，请稍后再删除会话');
+        return;
+      }
+      const target = sessionItems.find(item => item.session_id === targetSessionId);
+      if(!target) return;
+      if(!confirm(`确定要删除会话“${target.title}”吗？聊天记录也会一并删除。`)) return;
+
+      setSessionControlsDisabled(true);
+      try{
+        const res = await fetch(
+          `${API_BASE}/sessions/${encodeURIComponent(targetSessionId)}?owner_id=${encodeURIComponent(clientId)}`,
+          {method: 'DELETE'},
+        );
+        if(!res.ok){
+          throw new Error(await readApiError(res, `删除会话失败（HTTP ${res.status}）`));
+        }
+
+        sessionItems = sessionItems.filter(item => item.session_id !== targetSessionId);
+        if(sessionId === targetSessionId){
+          if(sessionItems.length > 0){
+            sortSessionItems();
+            sessionId = sessionItems[0].session_id;
+            localStorage.setItem('kb_session_id', sessionId);
+            resetChatView();
+            renderSessionList();
+            await loadHistory(sessionId);
+          }else{
+            const newSessionId = createSessionId();
+            const created = await registerSession(newSessionId);
+            sessionItems = [created];
+            sessionId = newSessionId;
+            localStorage.setItem('kb_session_id', sessionId);
+            resetChatView();
+          }
+        }
+        renderSessionList();
+      }catch(e){
+        console.error('Failed to delete session', e);
+        alert(`删除会话失败：${e.message || e}`);
+      }finally{
+        setSessionControlsDisabled(false);
+        inputEl.focus();
+      }
+    }
+
+    async function initializeSessions(){
+      try{
+        sessionItems = await fetchSessionItems();
+        let active = activeSessionItem();
+
+        // 兼容升级前只保存在 localStorage 中的当前会话。
+        if(!active){
+          active = await registerSession(sessionId);
+          sessionItems.unshift(active);
+        }
+
+        renderSessionList();
+        await loadHistory(sessionId);
+      }catch(e){
+        console.error('Failed to initialize sessions', e);
+        sessionListEl.innerHTML = '<div class="session-empty">会话列表加载失败，请确认后端和 MongoDB 已启动。</div>';
+        currentSessionTitleEl.textContent = '当前会话';
+        await loadHistory(sessionId);
+      }finally{
+        inputEl.focus();
+      }
+    }
+    function nowTime(){
+      const d = new Date();
+      return d.toLocaleTimeString('zh-CN', {hour:'2-digit', minute:'2-digit'});
+    }
+    function formatTime(ts){
+      if(!ts) return nowTime();
+      const d = new Date(Number(ts) * 1000);
+      if(Number.isNaN(d.getTime())) return nowTime();
+      return d.toLocaleTimeString('zh-CN', {hour:'2-digit', minute:'2-digit'});
+    }
+    function escapeHtml(str){
+      return String(str)
+        .replaceAll('&','&amp;')
+        .replaceAll('<','&lt;')
+        .replaceAll('>','&gt;')
+        .replaceAll('"','&quot;')
+        .replaceAll("'","&#039;");
+    }
+
+    function isImageUrl(url){
+      // 增加宽松度，有些 url 可能后面跟了奇怪的参数
+      // 只要包含 .jpg .png 等扩展名，且后面是 ? # 或 结束，或者被某些标点截断前
+      // 简单判断：路径部分以图片后缀结尾
+      try {
+        const u = new URL(url);
+        return /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(u.pathname);
+      } catch (e) {
+        // 如果 new URL 失败（比如相对路径或非法字符），退回正则匹配
+        return /\.(png|jpe?g|gif|webp|bmp|svg)(\?|#|$)/i.test(url || '');
+      }
+    }
+
+    function normalizeUrl(rawUrl){
+      const s = String(rawUrl || '').trim();
+      if(!s) return '';
+      // 尽量保留原始 URL，但把空格编码，避免 img src 失败
+      return s.replace(/\s/g, '%20');
+    }
+
+    function dedupeKeepOrder(arr){
+      const seen = new Set();
+      const out = [];
+      for(const x of (Array.isArray(arr) ? arr : [])){
+        const v = String(x || '');
+        if(!v) continue;
+        if(seen.has(v)) continue;
+        seen.add(v);
+        out.push(v);
+      }
+      return out;
+    }
+
+    function extractUrlsLoose(text){
+      const s = String(text || '');
+      // 简单正则提取：匹配 http/https 开头，直到遇到空白字符
+      // [^\s] 包含中文、特殊符号等，直到遇到换行或空格
+      const regex = /(https?:\/\/[^\s]+)/g;
+      const matches = s.match(regex) || [];
+      const urls = [];
+
+      // 去除首尾标点
+      const trimTailPunct = (u) => String(u || '').replace(/[)\]}'">，。,;；\]】）＞]+$/g, '');
+      const trimHeadPunct = (u) => String(u || '').replace(/^[<([{'"]+|^[＜（【\[]+/g, '');
+
+      for(const m of matches){
+        let u = trimHeadPunct(trimTailPunct(m));
+        // 简单清洗可能混入的结尾
+        if(u) urls.push(u);
+      }
+      return dedupeKeepOrder(urls);
+    }
+
+    function parseImagesFromTextLoosely(text){
+      const urls = extractUrlsLoose(text).filter(isImageUrl);
+      return dedupeKeepOrder(urls);
+    }
+
+    function findLastImageMarkerIndex(raw){
+      const s = String(raw || '');
+      // 支持多种写法：【图片】、【 图片 】、[图片]、[ 图片 ]
+      const re = /【\s*图片\s*】|\[\s*图片\s*\]/g;
+      let m;
+      let lastIdx = -1;
+      let lastLen = 0;
+      while((m = re.exec(s)) !== null){
+        lastIdx = m.index;
+        lastLen = m[0].length;
+      }
+      return { idx: lastIdx, len: lastLen };
+    }
+
+    function parseAnswerAndImages(text){
+      const raw = String(text || '');
+      const { idx, len } = findLastImageMarkerIndex(raw);
+      if(idx === -1) return { text: raw, images: [] };
+
+      const before = raw.slice(0, idx).trimEnd();
+      const after = raw.slice(idx + len).trim();
+      const urls = [];
+
+      // 优先按“每行一个 URL”的方式解析，允许 URL 中包含空格
+      const lines = after.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+      for(const line of lines){
+        if(line.startsWith('http://') || line.startsWith('https://')){
+          urls.push(line);
+        }else{
+          // 兼容同一行包含多个 URL 的情况
+          const matches = extractUrlsLoose(line);
+          for(const u of matches){
+            urls.push(u);
+          }
+        }
+      }
+
+      // 去重保序 + 过滤图片链接
+      const seen = new Set();
+      const images = [];
+      for(const u of urls){
+        const normalized = normalizeUrl(u);
+        if(!isImageUrl(normalized)) continue;
+        if(seen.has(normalized)) continue;
+        seen.add(normalized);
+        images.push(normalized);
+      }
+      return { text: before, images };
+    }
+
+    function shouldShowImagesByAnswer(answerText){
+      const t = String(answerText || '');
+      // 常见“需要看图/见图/如下图”的表述
+      const keywords = [
+        '如图', '如下图', '见图', '见下图', '下图', '上图',
+        '图片', '示意图', '结构图', '外观', '接线图', '电路图', '原理图', '安装图', '尺寸图', '截图'
+      ];
+      return keywords.some(k => t.includes(k));
+    }
+
+    function renderLatexInElement(element){
+      if(!element || typeof window.renderMathInElement !== 'function') return;
+      try{
+        window.renderMathInElement(element, {
+          delimiters: [
+            {left: '$$', right: '$$', display: true},
+            {left: '\\[', right: '\\]', display: true},
+            {left: '\\(', right: '\\)', display: false},
+            {left: '$', right: '$', display: false}
+          ],
+          throwOnError: false,
+          strict: false,
+          trust: false
+        });
+      }catch(error){
+        // 流式传输中的公式可能暂时不完整，保留 LaTeX 原文，
+        // 下一次增量或最终事件会重新执行渲染。
+        console.debug('LaTeX render deferred', error);
+      }
+    }
+
+    function renderAnswerWithImages(containerEl, answerText, candidateImageUrls){
+      const { text, images: imagesFromBlock } = parseAnswerAndImages(answerText);
+      const candidates = Array.isArray(candidateImageUrls)
+        ? candidateImageUrls.map(normalizeUrl).filter(isImageUrl)
+        : [];
+      const hasBlockImages = imagesFromBlock && imagesFromBlock.length > 0;
+
+      // 使用宽松提取
+      const looseImages = extractUrlsLoose(answerText).map(normalizeUrl).filter(isImageUrl);
+
+      // 只要后端给了候选图片，就展示（避免答案没写“如图”但用户仍需要看图）
+      // 或者从文本里提取到了图片 URL
+      const shouldShow = hasBlockImages || (candidates.length > 0) || (looseImages.length > 0);
+
+      // 优先级：Block 显式标记 > 后端候选 > 文本宽松提取
+      // 注意：这里做个并集可能更好，防止漏掉
+      const allImages = new Set([
+          ...(hasBlockImages ? imagesFromBlock : []),
+          ...candidates,
+          ...looseImages
+      ]);
+      const images = Array.from(allImages);
+
+      containerEl.textContent = '';
+
+      if((text || '').trim().length > 0){
+        const textEl = document.createElement('div');
+        textEl.className = 'answer-text';
+        textEl.textContent = text;
+        containerEl.appendChild(textEl);
+        renderLatexInElement(textEl);
+      }else{
+        const textEl = document.createElement('div');
+        textEl.className = 'answer-text';
+        textEl.textContent = '（已完成，但未返回答案）';
+        containerEl.appendChild(textEl);
+      }
+
+      if(images && images.length > 0){
+        const imgWrap = document.createElement('div');
+        imgWrap.className = 'answer-images';
+        for(const url of images){
+          const safeUrl = normalizeUrl(url);
+          const img = document.createElement('img');
+          img.loading = 'lazy';
+          img.src = safeUrl;
+          img.alt = '参考图片';
+          img.referrerPolicy = 'no-referrer';
+          img.addEventListener('error', () => {
+            img.style.display = 'none';
+          });
+          imgWrap.appendChild(img);
+
+          const link = document.createElement('a');
+          link.href = safeUrl;
+          link.target = '_blank';
+          link.rel = 'noopener noreferrer';
+          link.textContent = url;
+          imgWrap.appendChild(link);
+        }
+        containerEl.appendChild(imgWrap);
+      }
+    }
+
+    function addUserMsg(text, imageUrl = ''){
+      const wrapper = document.createElement('div');
+      wrapper.className = 'msg user';
+      const content = document.createElement('div');
+      const bubble = document.createElement('div');
+      bubble.className = 'bubble';
+      if(imageUrl){
+        const image = document.createElement('img');
+        image.className = 'user-query-image';
+        image.src = imageUrl;
+        image.alt = '用户上传的查询图片';
+        image.addEventListener(
+          'load',
+          () => URL.revokeObjectURL(imageUrl),
+          {once:true}
+        );
+        bubble.appendChild(image);
+      }
+      const textNode = document.createElement('div');
+      textNode.textContent = text;
+      bubble.appendChild(textNode);
+      const meta = document.createElement('div');
+      meta.className = 'meta';
+      meta.textContent = nowTime();
+      content.append(bubble, meta);
+      const avatar = document.createElement('div');
+      avatar.className = 'avatar';
+      avatar.textContent = '我';
+      wrapper.append(content, avatar);
+      chatEl.appendChild(wrapper);
+      scrollToBottom();
+    }
+
+    function addUserMsgWithTime(text, ts){
+      const html = `
+        <div class="msg user">
+          <div>
+            <div class="bubble">${escapeHtml(text)}</div>
+            <div class="meta">${formatTime(ts)}</div>
+          </div>
+          <div class="avatar">我</div>
+        </div>
+      `;
+      chatEl.insertAdjacentHTML('beforeend', html);
+      scrollToBottom();
+    }
+
+    function addBotMsgWithTime(text, ts, imageUrls){
+      const id = 'bot-his-' + Math.random().toString(36).slice(2);
+      const html = `
+        <div class="msg bot" id="${id}">
+          <div class="avatar bot"><img class="avatar-image" src="assets/images/wenqi-avatar.png" alt="问器"></div>
+          <div>
+            <div class="bubble"><div class="answer"></div></div>
+            <div class="meta">${formatTime(ts)}</div>
+          </div>
+        </div>
+      `;
+      chatEl.insertAdjacentHTML('beforeend', html);
+      const el = document.getElementById(id);
+      if(el){
+        const answerEl = el.querySelector('.answer');
+        renderAnswerWithImages(answerEl, text || '', imageUrls || []);
+      }
+      scrollToBottom();
+    }
+
+    function addBotMsgSkeleton(){
+      const id = 'bot-' + Math.random().toString(36).slice(2);
+      const html = `
+        <div class="msg bot" id="${id}">
+          <div class="avatar bot"><img class="avatar-image" src="assets/images/wenqi-avatar.png" alt="问器"></div>
+          <div style="min-width: 180px;">
+            <div class="bubble">
+              <span class="typing"><span class="dot"></span><span class="dot"></span><span class="dot"></span></span>
+              <details class="progress" open>
+                <summary>阶段进度（等待中）</summary>
+                <ul></ul>
+              </details>
+            </div>
+            <div class="meta">${nowTime()}</div>
+          </div>
+        </div>
+      `;
+      chatEl.insertAdjacentHTML('beforeend', html);
+      scrollToBottom();
+      return document.getElementById(id);
+    }
+
+    function renderProgress(botMsgEl, doneList, runningList, status){
+      const details = botMsgEl.querySelector('details.progress');
+      const summary = details.querySelector('summary');
+      const ul = details.querySelector('ul');
+      const done = Array.isArray(doneList) ? doneList : [];
+      const running = Array.isArray(runningList) ? runningList : [];
+      const totalDone = done.length;
+      const totalRun = running.length;
+
+      const statusMap = {
+        'processing': '处理中',
+        'completed': '已完成',
+        'failed': '失败',
+        'pending': '等待中',
+      };
+      const displayStatus = statusMap[status] || status || 'unknown';
+
+      summary.textContent = `阶段进度（已完成${totalDone}，进行中${totalRun}，状态：${displayStatus}）`;
+
+      const lines = [
+        ...done.map(x => `✅ ${x}`),
+        ...running.map(x => `⏳ ${x}`)
+      ];
+      ul.innerHTML = '';
+      if(lines.length === 0){
+        ul.insertAdjacentHTML('beforeend', '<li>暂无进度</li>');
+      }else{
+        for(const line of lines){
+          ul.insertAdjacentHTML('beforeend', `<li>${escapeHtml(line)}</li>`);
+        }
+      }
+    }
+
+    function finalizeBotAnswer(botMsgEl, answer, error, imageUrls){
+      const bubble = botMsgEl.querySelector('.bubble');
+      const progress = botMsgEl.querySelector('details.progress');
+      const err = (error || '').trim();
+
+      if(err){
+        const progressEl = progress ? progress : null;
+        if(progressEl) {
+            progressEl.remove();
+            progressEl.removeAttribute('open');
+        }
+        bubble.textContent = '';
+        const errEl = document.createElement('div');
+        errEl.className = 'answer';
+        errEl.textContent = `抱歉，本次处理失败：\n${err}`;
+        bubble.appendChild(errEl);
+        if(progressEl) bubble.appendChild(progressEl);
+        return;
+      }
+
+      const progressEl = progress ? progress : null;
+      if(progressEl) {
+        progressEl.remove();
+        progressEl.removeAttribute('open'); // 完成后自动收起
+      }
+      bubble.textContent = '';
+      const answerEl = document.createElement('div');
+      answerEl.className = 'answer';
+      bubble.appendChild(answerEl);
+      renderAnswerWithImages(answerEl, answer || '', imageUrls || []);
+      if(progressEl) bubble.appendChild(progressEl);
+    }
+
+    async function loadHistory(targetSessionId = sessionId){
+      try{
+        const res = await fetch(`${API_BASE}/history/${encodeURIComponent(targetSessionId)}`);
+        if(!res.ok) return;
+        const data = await res.json();
+        if(targetSessionId !== sessionId) return;
+
+        const items = Array.isArray(data.items) ? data.items : [];
+        // 保留首条欢迎消息，其余先清空再渲染历史
+        resetChatView();
+        for(const item of items){
+          if(item.role === 'user'){
+            addUserMsgWithTime(item.text || '', item.ts);
+          }else{
+            addBotMsgWithTime(item.text || '', item.ts, item.image_urls || []);
+          }
+        }
+        scrollToBottom();
+      }catch(e){
+        console.error('Failed to load history', e);
+      }
+    }
+
+    async function submitQuery(text, imageFile = null){
+      const isStream = streamToggle.checked;
+      if(imageFile){
+        const formData = new FormData();
+        formData.append('image', imageFile);
+        formData.append('query', text);
+        formData.append('session_id', sessionId);
+        formData.append('is_stream', String(isStream));
+        const imageResponse = await fetch(`${API_BASE}/query/image`, {
+          method: 'POST',
+          body: formData
+        });
+        if(!imageResponse.ok){
+          const message = await imageResponse.text();
+          throw new Error(message || '图片查询失败');
+        }
+        return await imageResponse.json();
+      }
+      const res = await fetch(`${API_BASE}/query`, {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({
+          query: text,
+          session_id: sessionId,
+          is_stream: isStream
+        })
+      });
+      if(!res.ok){
+        const msg = await res.text();
+        throw new Error(msg || '请求失败');
+      }
+      return await res.json();
+    }
+
+    async function poll(taskId, botMsgEl){
+      const typing = botMsgEl.querySelector('.typing');
+      const interval = setInterval(async () => {
+        try{
+          const res = await fetch(`${API_BASE}/status/${taskId}`);
+          const data = await res.json();
+          renderProgress(botMsgEl, data.done_list, data.running_list, data.status);
+
+          if(data.status === 'completed'){
+            if(typing) typing.remove();
+            finalizeBotAnswer(botMsgEl, data.answer, data.error, data.image_urls || []);
+            clearInterval(interval);
+            setSessionControlsDisabled(false);
+          }else if(data.status === 'failed'){
+            if(typing) typing.remove();
+            finalizeBotAnswer(botMsgEl, data.answer, data.error || 'failed', data.image_urls || []);
+            clearInterval(interval);
+            setSessionControlsDisabled(false);
+          }
+        }catch(e){
+          // 轮询错误不立刻终止，让用户稍后重试
+        }
+      }, 1200);
+    }
+
+    async function onSend(){
+      console.log('[perf] A onSend start', performance.now());
+      const text = (inputEl.value || '').trim();
+      const imageFile = selectedQueryImage;
+      if(!text && !imageFile) return;
+      const displayText = text || '根据这张图片检索相关内容';
+      const previewUrl = imageFile ? selectedQueryImageUrl : '';
+      inputEl.value = '';
+      clearSelectedQueryImage(false);
+      updateActiveSessionFromMessage(
+        imageFile ? `[图片检索] ${displayText}` : displayText
+      );
+      addUserMsg(displayText, previewUrl);
+      const botMsgEl = addBotMsgSkeleton();
+      setSessionControlsDisabled(true);
+
+      try{
+        const isStream = streamToggle.checked;
+        console.log('[perf] B submitQuery start', performance.now(), { isStream });
+        const data = await submitQuery(text, imageFile);
+        console.log('[perf] B submitQuery end', performance.now(), data);
+
+        // 渲染初始状态
+        renderProgress(botMsgEl, [], [], 'pending');
+
+        if (!isStream) {
+          // 非流式：直接拿到结果
+          // data: { session_id, answer, done_list, error, message }
+          renderProgress(botMsgEl, data.done_list || [], [], 'completed');
+          finalizeBotAnswer(botMsgEl, data.answer, data.error, data.image_urls || []);
+          setSessionControlsDisabled(false);
+          return;
+        }
+
+        // 流式：SSE
+        const { task_id } = data;
+
+        const bubble = botMsgEl.querySelector('.bubble');
+        let answerEl = bubble.querySelector('.answer');
+        if(!answerEl){
+          answerEl = document.createElement('div');
+          answerEl.className = 'answer';
+          bubble.insertBefore(answerEl, bubble.firstChild);
+        }
+
+        const es = new EventSource(`${API_BASE}/stream/${task_id}`);
+        console.log('[perf] C EventSource created', performance.now(), { task_id });
+        let rawAnswerText = '';
+
+        es.addEventListener('progress', (e) => {
+          try{
+            const d = JSON.parse(e.data || '{}');
+            renderProgress(botMsgEl, d.done_list, d.running_list, d.status);
+            // 当进度状态已完成时，提前结束“...”等待态
+            if(d && d.status === 'completed'){
+              const typing = botMsgEl.querySelector('.typing');
+              if(typing) typing.remove();
+            }
+          }catch(_){}
+        });
+
+        es.addEventListener('delta', (e) => {
+          try{
+            const d = JSON.parse(e.data || '{}');
+            const delta = d.delta || '';
+            if(delta){
+              rawAnswerText += delta;
+              // 即使后端未发送 final，也尽可能在流式过程中渲染图片
+              renderAnswerWithImages(answerEl, rawAnswerText, []);
+              scrollToBottom();
+            }
+          }catch(_){}
+        });
+
+        // ★ 抽取公共方法：收到 final/final_answer 时，强制刷新进度 + 渲染答案
+        function handleFinalEvent(e) {
+          const typing = botMsgEl.querySelector('.typing');
+          if(typing) typing.remove();
+
+          // ★ 关键修复：强制把所有"进行中 ⏳"的节点标记为"已完成 ✅"
+          // 原因：最后一条 progress 事件可能还没到就被 final 抢先了，
+          // 导致"生成答案"等节点永远卡在 ⏳ 状态不变绿
+          const details = botMsgEl.querySelector('details.progress');
+          if(details){
+            const ul = details.querySelector('ul');
+            if(ul){
+              const lis = ul.querySelectorAll('li');
+              lis.forEach(li => {
+                if(li.textContent.includes('⏳')){
+                  li.textContent = li.textContent.replace('⏳', '✅');
+                }
+              });
+            }
+            // 更新 summary：全部完成
+            const summary = details.querySelector('summary');
+            if(summary){
+              const totalDone = details.querySelectorAll('li').length;
+              summary.textContent = `阶段进度（已完成${totalDone}，进行中0，状态：已完成）`;
+            }
+            // 收起进度条
+            details.removeAttribute('open');
+          }
+
+          try{
+            const d = JSON.parse(e.data || '{}');
+            // 优先使用 final 包里的完整 answer，否则回退到流式拼接的文本
+            const finalText = (d && typeof d.answer === 'string' && d.answer.trim().length > 0) ? d.answer : (rawAnswerText || answerEl.textContent || '');
+            renderAnswerWithImages(answerEl, finalText, d.image_urls || []);
+          }catch(_){}
+          es.close();
+          setSessionControlsDisabled(false);
+        }
+
+        es.addEventListener('final', handleFinalEvent);
+        es.addEventListener('final_answer', handleFinalEvent);
+
+        es.addEventListener('error', (e) => {
+          const typing = botMsgEl.querySelector('.typing');
+          if(typing) typing.remove();
+          // 收起进度条
+          const progress = botMsgEl.querySelector('details.progress');
+          if(progress) progress.removeAttribute('open');
+
+          try{
+            const msg = e && e.data ? (JSON.parse(e.data).error || 'SSE 连接中断/失败') : 'SSE 连接中断/失败';
+            rawAnswerText += `\n\n（错误：${msg}）`;
+            renderAnswerWithImages(answerEl, rawAnswerText, []);
+          }catch(_){
+            rawAnswerText += `\n\n（错误：SSE 连接中断/失败）`;
+            renderAnswerWithImages(answerEl, rawAnswerText, []);
+          }
+          es.close();
+          setSessionControlsDisabled(false);
+        });
+      }catch(e){
+        const bubble = botMsgEl.querySelector('.bubble');
+        const progress = botMsgEl.querySelector('details.progress');
+        const typing = botMsgEl.querySelector('.typing');
+        if(typing) typing.remove();
+        bubble.innerHTML = `请求失败：${escapeHtml(e.message || e)}\n\n` + progress.outerHTML;
+        setSessionControlsDisabled(false);
+      }
+    }
+
+    sendBtn.addEventListener('click', onSend);
+    attachImageBtn.addEventListener('click', () => queryImageInput.click());
+    queryImageInput.addEventListener('change', () => {
+      const file = queryImageInput.files && queryImageInput.files[0];
+      if(!file) return;
+      selectQueryImage(file);
+    });
+    function selectQueryImage(file){
+      const supportedTypes = new Set([
+        'image/jpeg',
+        'image/png',
+        'image/webp',
+        'image/gif',
+        'image/bmp'
+      ]);
+      if(!supportedTypes.has(file.type)){
+        alert('仅支持 JPEG、PNG、WebP、GIF 和 BMP 图片');
+        queryImageInput.value = '';
+        return false;
+      }
+      if(file.size > 10 * 1024 * 1024){
+        alert('图片大小不能超过 10 MB');
+        queryImageInput.value = '';
+        return false;
+      }
+      if(selectedQueryImageUrl) URL.revokeObjectURL(selectedQueryImageUrl);
+      selectedQueryImage = file;
+      selectedQueryImageUrl = URL.createObjectURL(file);
+      queryImageThumb.src = selectedQueryImageUrl;
+      queryImageName.textContent = file.name || '粘贴的图片';
+      queryImagePreview.hidden = false;
+      return true;
+    }
+    inputEl.addEventListener('paste', (event) => {
+      const clipboardItems = Array.from(
+        event.clipboardData && event.clipboardData.items || []
+      );
+      const imageItem = clipboardItems.find(
+        item => item.kind === 'file' && item.type.startsWith('image/')
+      );
+      if(!imageItem) return;
+
+      const pastedBlob = imageItem.getAsFile();
+      if(!pastedBlob) return;
+      event.preventDefault();
+
+      const extensionByType = {
+        'image/jpeg': 'jpg',
+        'image/png': 'png',
+        'image/webp': 'webp',
+        'image/gif': 'gif',
+        'image/bmp': 'bmp'
+      };
+      const extension = extensionByType[pastedBlob.type] || 'png';
+      const pastedFile = new File(
+        [pastedBlob],
+        `clipboard-${Date.now()}.${extension}`,
+        {type: pastedBlob.type || 'image/png'}
+      );
+      selectQueryImage(pastedFile);
+    });
+    function clearSelectedQueryImage(revokeUrl = true){
+      if(revokeUrl && selectedQueryImageUrl){
+        URL.revokeObjectURL(selectedQueryImageUrl);
+      }
+      selectedQueryImage = null;
+      selectedQueryImageUrl = '';
+      queryImageInput.value = '';
+      queryImageThumb.removeAttribute('src');
+      queryImageName.textContent = '';
+      queryImagePreview.hidden = true;
+    }
+    removeQueryImageBtn.addEventListener(
+      'click',
+      () => clearSelectedQueryImage()
+    );
+    inputEl.addEventListener('keydown', (e) => {
+      if(e.key === 'Enter' && !e.shiftKey){
+        e.preventDefault();
+        onSend();
+      }
+    });
+    btnNewSession.addEventListener('click', () => createNewSession(true));
+    btnSidebarToggle.addEventListener('click', openSidebar);
+    sidebarBackdropEl.addEventListener('click', closeSidebar);
+    sessionListEl.addEventListener('click', (e) => {
+      const actionEl = e.target.closest('[data-action]');
+      const itemEl = e.target.closest('.session-item');
+      if(!actionEl || !itemEl) return;
+
+      const targetSessionId = itemEl.dataset.sessionId;
+      const action = actionEl.dataset.action;
+      if(action === 'select') switchSession(targetSessionId);
+      if(action === 'rename') renameSessionById(targetSessionId);
+      if(action === 'delete') deleteSessionById(targetSessionId);
+    });
+
+    btnClear.addEventListener('click', async () => {
+      if(!confirm('确定要清空当前会话的历史记录吗？这将无法恢复。')) return;
+
+      let clearedOnServer = false;
+      try {
+        const res = await fetch(`${API_BASE}/history/${encodeURIComponent(sessionId)}`, { method: 'DELETE' });
+        if(!res.ok) {
+           console.error("Failed to clear history backend, status:", res.status);
+           alert('服务端清空失败，仅清空本地显示');
+        }else{
+           clearedOnServer = true;
+        }
+      } catch(e) {
+        console.error("Failed to clear history backend", e);
+        alert('服务端清空失败，仅清空本地显示');
+      }
+
+      resetChatView();
+      if(clearedOnServer){
+        const active = activeSessionItem();
+        if(active){
+          active.last_message = '';
+          active.updated_at = Date.now() / 1000;
+          renderSessionList();
+        }
+      }
+    });
+
+    initializeSessions();
+  </script>
+</body>
+</html>
+
+

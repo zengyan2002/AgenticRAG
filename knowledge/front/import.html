@@ -1,0 +1,936 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>文件导入服务</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            min-height: 100vh;
+            /* 科技感背景 */
+            background-color: #0f172a;
+            background-image: radial-gradient(circle at 15% 50%, rgba(56, 189, 248, 0.08) 0%, transparent 50%),
+            radial-gradient(circle at 85% 30%, rgba(129, 140, 248, 0.08) 0%, transparent 50%),
+            linear-gradient(to right, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+            linear-gradient(to bottom, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+            background-size: 100% 100%, 100% 100%, 40px 40px, 40px 40px;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 800px;
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            padding: 30px;
+            border-radius: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            color: #e2e8f0;
+        }
+
+        h1 {
+            color: #f8fafc;
+            text-align: center;
+            margin-bottom: 30px;
+            font-weight: 600;
+            letter-spacing: 1px;
+            text-shadow: 0 0 20px rgba(56, 189, 248, 0.4);
+        }
+
+        .upload-area {
+            border: 2px dashed rgba(56, 189, 248, 0.4);
+            background: rgba(15, 23, 42, 0.4);
+            border-radius: 12px;
+            padding: 40px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-bottom: 20px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .upload-area:hover {
+            border-color: #38bdf8;
+            background: rgba(56, 189, 248, 0.05);
+            box-shadow: inset 0 0 20px rgba(56, 189, 248, 0.1);
+        }
+
+        .upload-icon {
+            font-size: 48px;
+            margin-bottom: 15px;
+            filter: drop-shadow(0 0 10px rgba(56, 189, 248, 0.5));
+        }
+
+        .upload-text {
+            color: #94a3b8;
+            font-size: 16px;
+        }
+
+        .file-input {
+            display: none;
+        }
+
+        .file-list {
+            margin-top: 30px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .file-item {
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .file-item:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+            border-color: rgba(56, 189, 248, 0.3);
+        }
+
+        .file-info {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            margin-right: 20px;
+        }
+
+        .file-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .file-name {
+            font-weight: 600;
+            color: #f1f5f9;
+            font-size: 16px;
+        }
+
+        .file-size {
+            font-size: 13px;
+            color: #64748b;
+        }
+
+        .status-badge {
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 600;
+            color: white;
+            min-width: 80px;
+            text-align: center;
+            letter-spacing: 0.5px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        .status-uploading {
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+        }
+
+        .status-processing {
+            background: linear-gradient(135deg, #3b82f6, #2563eb);
+        }
+
+        .status-completed {
+            background: linear-gradient(135deg, #10b981, #059669);
+        }
+
+        .status-error {
+            background: linear-gradient(135deg, #ef4444, #dc2626);
+        }
+
+        .progress-wrapper {
+            margin-top: 8px;
+            display: none;
+        }
+
+        .progress-bar-container {
+            width: 100%;
+            height: 6px;
+            background-color: rgba(15, 23, 42, 0.8);
+            border-radius: 3px;
+            overflow: hidden;
+            box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.5);
+            position: relative;
+        }
+
+        .progress-bar {
+            height: 100%;
+            width: 0%;
+            border-radius: 3px;
+            transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.4s;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .progress-bar::after {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            right: 0;
+            background: linear-gradient(
+                    90deg,
+                    rgba(255, 255, 255, 0) 0%,
+                    rgba(255, 255, 255, 0.2) 50%,
+                    rgba(255, 255, 255, 0) 100%
+            );
+            animation: shimmer 2s infinite;
+        }
+
+        @keyframes shimmer {
+            0% {
+                transform: translateX(-100%);
+            }
+            100% {
+                transform: translateX(100%);
+            }
+        }
+
+        .progress-text {
+            font-size: 12px;
+            color: #94a3b8;
+            margin-top: 6px;
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .log-details {
+            margin-top: 15px;
+            font-size: 13px;
+            color: #cbd5e1;
+            background: linear-gradient(135deg, rgba(15, 23, 42, 0.6), rgba(30, 41, 59, 0.4));
+            border-radius: 12px;
+            padding: 16px 18px;
+            border: 1px solid rgba(56, 189, 248, 0.1);
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+        }
+
+        .log-details summary {
+            cursor: pointer;
+            user-select: none;
+            color: #e2e8f0;
+            outline: none;
+            display: flex;
+            align-items: center;
+            font-weight: 600;
+            font-size: 13px;
+            letter-spacing: 0.3px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        }
+
+        .log-details[open] summary {
+            margin-bottom: 4px;
+        }
+
+        .log-details summary:hover {
+            color: #38bdf8;
+        }
+
+        .log-details summary::marker {
+            color: #475569;
+        }
+
+        .log-list {
+            margin: 8px 0 0 0;
+            padding: 0 0 0 20px;
+            list-style: none;
+            max-height: 200px;
+            overflow-y: auto;
+            position: relative;
+        }
+
+        /* 时间线竖线 */
+        .log-list::before {
+            content: "";
+            position: absolute;
+            left: 7px;
+            top: 8px;
+            bottom: 8px;
+            width: 2px;
+            background: linear-gradient(180deg, rgba(56, 189, 248, 0.3), rgba(16, 185, 129, 0.3));
+            border-radius: 1px;
+        }
+
+        .log-list::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .log-list::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.1);
+            border-radius: 3px;
+        }
+
+        .log-list::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 3px;
+        }
+
+        .log-list::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .log-list li {
+            margin: 0;
+            padding: 10px 12px;
+            line-height: 1.5;
+            display: flex;
+            align-items: center;
+            position: relative;
+            border-radius: 8px;
+            transition: background 0.2s ease;
+        }
+
+        .log-list li:hover {
+            background: rgba(255, 255, 255, 0.03);
+        }
+
+        /* 时间线节点圆点 */
+        .log-list li::before {
+            content: "";
+            position: absolute;
+            left: -17px;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            border: 2px solid #334155;
+            background: #1e293b;
+            box-shadow: 0 0 0 3px rgba(15, 23, 42, 0.8);
+            z-index: 1;
+        }
+
+        .log-done {
+            color: #d1fae5;
+        }
+
+        .log-done::before {
+            background: #10b981 !important;
+            border-color: #10b981 !important;
+            box-shadow: 0 0 8px rgba(16, 185, 129, 0.4), 0 0 0 3px rgba(15, 23, 42, 0.8) !important;
+        }
+
+        .log-duration {
+            margin-left: auto;
+            font-size: 12px;
+            color: #67e8f9;
+            background: rgba(56, 189, 248, 0.08);
+            border: 1px solid rgba(56, 189, 248, 0.2);
+            padding: 2px 12px;
+            border-radius: 12px;
+            white-space: nowrap;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            font-variant-numeric: tabular-nums;
+            flex-shrink: 0;
+        }
+
+        .log-running {
+            color: #bae6fd;
+            animation: pulseText 2s infinite;
+        }
+
+        .log-running::before {
+            background: #3b82f6 !important;
+            border-color: #3b82f6 !important;
+            box-shadow: 0 0 8px rgba(59, 130, 246, 0.5), 0 0 0 3px rgba(15, 23, 42, 0.8) !important;
+            animation: pulseNode 2s infinite !important;
+        }
+
+        @keyframes pulseText {
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.7;
+            }
+        }
+
+        @keyframes pulseNode {
+            0%, 100% {
+                box-shadow: 0 0 8px rgba(59, 130, 246, 0.5), 0 0 0 3px rgba(15, 23, 42, 0.8);
+            }
+            50% {
+                box-shadow: 0 0 14px rgba(59, 130, 246, 0.8), 0 0 0 3px rgba(15, 23, 42, 0.8);
+            }
+        }
+
+        @keyframes spin {
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+        /* ===== 与问答页一致的红金纸张主题 ===== */
+        * { box-sizing: border-box; }
+        body {
+            position: relative;
+            padding: 24px;
+            align-items: flex-start;
+            color: #4a2b20;
+            font-family: "Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif;
+            background-color: #081426;
+            background-image:
+                radial-gradient(circle at 50% 0%, rgba(61, 91, 139, .25), transparent 42%),
+                radial-gradient(circle at 12% 85%, rgba(176, 85, 48, .08), transparent 35%),
+                linear-gradient(rgba(255,255,255,.025) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255,255,255,.025) 1px, transparent 1px);
+            background-size: 100% 100%, 100% 100%, 42px 42px, 42px 42px;
+        }
+        body::before,
+        body::after {
+            position: fixed;
+            color: #d19747;
+            opacity: .55;
+            pointer-events: none;
+            text-shadow: 0 0 14px rgba(222, 147, 65, .35);
+        }
+        body::before { content: "✦"; left: 8%; top: 12%; font-size: 22px; }
+        body::after {
+            content: "";
+            right: 8%;
+            bottom: 15%;
+            width: 38px;
+            height: 38px;
+            background: url("assets/images/klee-clover.svg") center/contain no-repeat;
+            filter: drop-shadow(0 0 8px rgba(222, 147, 65, .3));
+        }
+        .container {
+            position: relative;
+            width: 100%;
+            max-width: 980px;
+            min-height: calc(100vh - 48px);
+            padding: 54px 48px 48px;
+            overflow: hidden;
+            color: #4a2b20;
+            border: 2px solid rgba(207, 151, 74, .76);
+            border-radius: 25px;
+            background:
+                radial-gradient(circle at 12% 85%, rgba(211, 158, 83, .12), transparent 21%),
+                repeating-linear-gradient(0deg, rgba(135,78,34,.018) 0, rgba(135,78,34,.018) 1px, transparent 1px, transparent 4px),
+                linear-gradient(145deg, #fff8e9, #f3d9b4);
+            box-shadow: 0 28px 70px rgba(1, 8, 22, .58), 0 0 0 1px rgba(247, 208, 139, .18);
+        }
+        .container::before {
+            content: "🐰";
+            position: absolute;
+            right: 52px;
+            top: 28px;
+            font-size: 70px;
+            filter: sepia(.24) saturate(.78);
+            opacity: .82;
+            transform: rotate(5deg);
+            pointer-events: none;
+        }
+        .container::after {
+            content: "";
+            position: absolute;
+            left: 35px;
+            bottom: 10px;
+            width: 170px;
+            height: 170px;
+            background: url("assets/images/klee-clover.svg") center/contain no-repeat;
+            opacity: .055;
+            transform: rotate(-15deg);
+            pointer-events: none;
+        }
+        .container > * { position: relative; z-index: 1; }
+        .back-link {
+            position: absolute;
+            left: 24px;
+            top: 22px;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            min-height: 34px;
+            padding: 6px 12px;
+            color: #744630;
+            font-size: 13px;
+            text-decoration: none;
+            border: 1px solid rgba(178, 111, 43, .34);
+            border-radius: 999px;
+            background: rgba(255, 248, 229, .7);
+            transition: .15s ease;
+        }
+        .back-link:hover {
+            color: #9f2e24;
+            border-color: rgba(168, 75, 40, .52);
+            background: #fff8e7;
+            transform: translateX(-2px);
+        }
+        h1 {
+            margin: 24px 0 34px;
+            color: #5a2f20;
+            font-family: "STKaiti", "KaiTi", "Microsoft YaHei", sans-serif;
+            font-size: 32px;
+            font-weight: 700;
+            letter-spacing: 2px;
+            text-shadow: 0 1px 0 #fff7df;
+        }
+        h1::before,
+        h1::after {
+            content: "✦";
+            display: inline-block;
+            margin: 0 16px;
+            color: #cc913b;
+            font-size: 18px;
+            vertical-align: middle;
+        }
+        .upload-area {
+            min-height: 250px;
+            margin-bottom: 26px;
+            padding: 62px 40px 45px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            border: 2px dashed #d0a05c;
+            border-radius: 20px;
+            color: #6c432f;
+            background:
+                radial-gradient(circle at 50% 50%, rgba(255,255,255,.65), transparent 54%),
+                rgba(255, 247, 229, .62);
+            box-shadow: inset 0 0 0 6px rgba(214, 168, 97, .055), 0 8px 24px rgba(116, 72, 33, .06);
+        }
+        .upload-area::before,
+        .upload-area::after {
+            content: "❀";
+            position: absolute;
+            color: #c89546;
+            font-size: 23px;
+            opacity: .75;
+        }
+        .upload-area::before { left: 15px; top: 13px; }
+        .upload-area::after { right: 15px; bottom: 13px; }
+        .upload-area:hover {
+            border-color: #b94a31;
+            background: rgba(255, 242, 214, .83);
+            box-shadow: inset 0 0 0 6px rgba(203, 133, 57, .07), 0 10px 28px rgba(112, 62, 30, .1);
+            transform: translateY(-1px);
+        }
+        .upload-icon {
+            width: 78px;
+            height: 58px;
+            margin-bottom: 24px;
+            display: grid;
+            place-items: center;
+            border: 3px solid #a73627;
+            border-radius: 30px 30px 20px 20px;
+            color: #ffe2a6;
+            font-size: 36px;
+            line-height: 1;
+            background: linear-gradient(180deg, #df5a3b, #af3025);
+            filter: none;
+            box-shadow: 0 4px 0 #7b241e, 0 8px 18px rgba(101, 34, 24, .2), inset 0 1px 0 rgba(255,255,255,.34);
+        }
+        .upload-text {
+            color: #76503a;
+            font-family: "STKaiti", "KaiTi", "Microsoft YaHei", sans-serif;
+            font-size: 17px;
+        }
+        .file-list { margin-top: 24px; gap: 17px; }
+        .file-item {
+            border: 1px solid rgba(177, 109, 43, .35);
+            border-radius: 16px;
+            color: #543326;
+            background: linear-gradient(145deg, rgba(255,250,237,.95), rgba(244,222,186,.9));
+            box-shadow: 0 6px 18px rgba(97, 58, 27, .09), inset 0 1px 0 rgba(255,255,255,.75);
+        }
+        .file-item:hover {
+            border-color: rgba(180, 84, 44, .55);
+            box-shadow: 0 10px 24px rgba(97, 58, 27, .13);
+        }
+        .file-name { color: #563326; font-family: "STKaiti", "KaiTi", "Microsoft YaHei", sans-serif; }
+        .file-size { color: #9a765d; }
+        .status-badge {
+            border: 1px solid rgba(120, 54, 30, .28);
+            color: #fff7df;
+            box-shadow: 0 3px 0 rgba(102, 41, 25, .24), 0 5px 10px rgba(90, 42, 23, .1);
+        }
+        .status-uploading { background: linear-gradient(135deg, #d89737, #b56c24) !important; }
+        .status-processing { background: linear-gradient(135deg, #d45235, #a92f25) !important; }
+        .status-completed { background: linear-gradient(135deg, #72934c, #4e7137) !important; }
+        .status-error { background: linear-gradient(135deg, #c74631, #92271f) !important; }
+        .progress-bar-container {
+            height: 8px;
+            background: #e6cda7;
+            box-shadow: inset 0 1px 3px rgba(105, 57, 26, .22);
+        }
+        .progress-bar { background: linear-gradient(90deg, #c94731, #dc9840) !important; }
+        .progress-text { color: #8d694f; }
+        .log-details {
+            color: #654332;
+            border-color: rgba(176, 109, 43, .28);
+            background: linear-gradient(145deg, rgba(255,248,231,.92), rgba(240,215,176,.72));
+            box-shadow: inset 0 1px 0 rgba(255,255,255,.6);
+        }
+        .log-details summary {
+            color: #623b2b;
+            border-bottom-color: rgba(158, 94, 37, .16);
+        }
+        .log-details summary:hover { color: #a63126; }
+        .log-details summary::marker { color: #b47a37; }
+        .log-list::before { background: linear-gradient(180deg, #d64d34, #c49a4d); }
+        .log-list::-webkit-scrollbar-track { background: rgba(132, 79, 37, .08); }
+        .log-list::-webkit-scrollbar-thumb { background: rgba(175, 112, 49, .35); }
+        .log-list li:hover { background: rgba(183, 120, 53, .07); }
+        .log-list li::before {
+            border-color: #c39960;
+            background: #f7e6c9;
+            box-shadow: 0 0 0 3px rgba(248, 230, 198, .86);
+        }
+        .log-done { color: #55743b; }
+        .log-done::before {
+            background: #6f934c !important;
+            border-color: #6f934c !important;
+            box-shadow: 0 0 7px rgba(88, 126, 57, .32), 0 0 0 3px rgba(248, 230, 198, .86) !important;
+        }
+        .log-running { color: #a33a2b; }
+        .log-running::before {
+            background: #cf4b33 !important;
+            border-color: #cf4b33 !important;
+            box-shadow: 0 0 8px rgba(190, 67, 45, .38), 0 0 0 3px rgba(248, 230, 198, .86) !important;
+        }
+        .log-duration {
+            color: #7b5036;
+            border-color: rgba(176, 109, 43, .28);
+            background: rgba(215, 169, 96, .14);
+        }
+
+        @media (max-width: 720px) {
+            body { padding: 0; }
+            .container {
+                min-height: 100vh;
+                padding: 58px 16px 28px;
+                border: none;
+                border-radius: 0;
+            }
+            .container::before { right: 18px; top: 30px; font-size: 48px; opacity: .55; }
+            .back-link { left: 14px; top: 14px; }
+            h1 { margin: 22px 0 26px; font-size: 25px; }
+            h1::before, h1::after { margin: 0 7px; font-size: 13px; }
+            .upload-area { min-height: 220px; padding: 48px 20px 35px; }
+            .upload-text { font-size: 15px; }
+            .file-item { padding: 15px; }
+            .file-header { align-items: flex-start; gap: 10px; }
+            .file-name { max-width: 190px; overflow-wrap: anywhere; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <a class="back-link" id="backToChatLink">← 返回问答</a>
+    <h1>📄 知识库文件导入</h1>
+
+    <div class="upload-area" id="dropZone" onclick="document.getElementById('fileInput').click()">
+        <div class="upload-icon">☁️</div>
+        <div class="upload-text">点击或拖拽文件到此处 (Word/PDF/MD)</div>
+        <input type="file" id="fileInput" class="file-input" accept=".doc,.docx,.pdf,.md">
+    </div>
+
+    <div id="fileList" class="file-list">
+    </div>
+</div>
+
+<script>
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+    const fileList = document.getElementById('fileList');
+
+    // 导入服务固定运行在 18000；保留当前主机名，方便本机和局域网访问。
+    // 直接通过 file:// 打开页面时，回退到本机导入服务。
+    const API_BASE = (() => {
+        if (location.protocol !== 'http:' && location.protocol !== 'https:') {
+            return 'http://127.0.0.1:18000';
+        }
+        const apiUrl = new URL(location.origin);
+        apiUrl.port = '18000';
+        return apiUrl.origin;
+    })();
+    const CHAT_PAGE_URL = (() => {
+        if (location.protocol !== 'http:' && location.protocol !== 'https:') {
+            return 'http://127.0.0.1:18001/front/chat.html';
+        }
+        const chatUrl = new URL(location.origin);
+        chatUrl.port = '18001';
+        chatUrl.pathname = '/front/chat.html';
+        return chatUrl.href;
+    })();
+    document.getElementById('backToChatLink').href = CHAT_PAGE_URL;
+
+    dropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropZone.style.borderColor = '#38bdf8';
+        dropZone.style.background = 'rgba(56, 189, 248, 0.1)';
+    });
+
+    dropZone.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        dropZone.style.borderColor = '';
+        dropZone.style.background = '';
+    });
+
+    dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.style.borderColor = '';
+        dropZone.style.background = '';
+        handleFiles(e.dataTransfer.files);
+    });
+
+    fileInput.addEventListener('change', (e) => {
+        handleFiles(e.target.files);
+    });
+
+    function handleFiles(files) {
+        Array.from(files).forEach(uploadFile);
+    }
+
+    function updateProgressUI(wrapper, percentage) {
+        const bar = wrapper.querySelector('.progress-bar');
+        const text = wrapper.querySelector('.progress-text');
+
+        const safePercentage = Math.min(Math.max(percentage, 0), 100);
+
+        bar.style.width = safePercentage + '%';
+        text.textContent = Math.round(safePercentage) + '%';
+
+        if (safePercentage >= 100) {
+            bar.style.background = 'linear-gradient(90deg, #10b981, #34d399)';
+        } else if (safePercentage < 10) {
+            bar.style.background = 'linear-gradient(90deg, #f59e0b, #fbbf24)';
+        } else {
+            bar.style.background = 'linear-gradient(90deg, #3b82f6, #60a5fa)';
+        }
+    }
+
+    async function uploadFile(file) {
+        // === 核心逻辑优化：动态判断总节点数 ===
+        const lowerName = file.name.toLowerCase();
+        const isWord = lowerName.endsWith('.doc') || lowerName.endsWith('.docx');
+        const isPDF = lowerName.endsWith('.pdf');
+        // 包含上传节点：Word 10 步、PDF 9 步、Markdown 8 步。
+        const totalNodes = isWord ? 10 : (isPDF ? 9 : 8);
+
+        const id = 'file-' + Math.random().toString(36).substr(2, 8);
+        const html = `
+            <div class="file-item" id="${id}">
+                <div class="file-info">
+                    <div class="file-header">
+                        <span class="file-name">${file.name}</span>
+                        <span class="file-size">${(file.size / 1024).toFixed(2)} KB</span>
+                    </div>
+                    <div class="progress-wrapper">
+                        <div class="progress-bar-container">
+                            <div class="progress-bar"></div>
+                        </div>
+                        <div class="progress-text">0%</div>
+                    </div>
+                    <details class="log-details" open>
+                        <summary>准备上传...</summary>
+                        <ul class="log-list"></ul>
+                    </details>
+                </div>
+                <div class="status-badge status-uploading">上传中...</div>
+            </div>
+        `;
+        fileList.insertAdjacentHTML('afterbegin', html);
+
+        const itemEl = document.getElementById(id);
+        const statusBadge = itemEl.querySelector('.status-badge');
+        const progressWrapper = itemEl.querySelector('.progress-wrapper');
+        const logListEl = itemEl.querySelector('.log-list');
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        try {
+            progressWrapper.style.display = 'block';
+
+            // 使用动态的 totalNodes 计算基础上传进度
+            const uploadPercentage = (1 / totalNodes) * 100;
+            updateProgressUI(progressWrapper, Math.min(uploadPercentage, 10));
+
+            const initialLog = document.createElement('li');
+            initialLog.textContent = "开始上传文件...";
+            initialLog.className = "log-running";
+            logListEl.appendChild(initialLog);
+
+            const response = await fetch(`${API_BASE}/upload`, {
+                method: 'POST',
+                body: formData
+            });
+
+            if (!response.ok) throw new Error('Upload failed');
+
+            const result = await response.json();
+            const taskId = result.task_id;
+
+            updateProgressUI(progressWrapper, uploadPercentage);
+            statusBadge.textContent = '处理中';
+            statusBadge.className = 'status-badge status-processing';
+
+            // 把专属的 totalNodes 传给轮询函数
+            pollStatus(taskId, itemEl, totalNodes);
+
+        } catch (error) {
+            console.error(error);
+            statusBadge.textContent = '上传失败';
+            statusBadge.className = 'status-badge status-error';
+            updateProgressUI(progressWrapper, 0);
+
+            const errLog = document.createElement('li');
+            errLog.textContent = "❌ 网络请求失败或服务器异常";
+            errLog.style.color = "#ef4444";
+            logListEl.appendChild(errLog);
+        }
+    }
+
+    function normalizeLogText(text) {
+        if (typeof text !== 'string') return String(text);
+        return text;
+    }
+
+    // 接收 totalNodes 参数计算最终百分比和渲染文案
+    function formatDuration(seconds) {
+        if (seconds < 60) {
+            return seconds.toFixed(1) + 's';
+        }
+        const mins = Math.floor(seconds / 60);
+        const secs = (seconds % 60).toFixed(0);
+        return `${mins}m${secs}s`;
+    }
+
+    function renderLogsAndCalculateProgress(itemEl, doneList, runningList, totalNodes, durations) {
+        const logSummary = itemEl.querySelector('.log-details summary');
+        const logListEl = itemEl.querySelector('.log-list');
+
+        const done = Array.isArray(doneList) ? doneList : [];
+        const running = Array.isArray(runningList) ? runningList : [];
+        const durationMap = durations || {};
+
+        // === 进度计算逻辑 ===
+        let currentPercentage = (done.length / totalNodes) * 100;
+
+        if (running.length > 0) {
+            currentPercentage += (0.5 / totalNodes) * 100;
+        }
+
+        if (currentPercentage >= 100) {
+            currentPercentage = 95;
+        }
+
+        // 计算总耗时
+        let totalDuration = 0;
+        for (const key in durationMap) {
+            totalDuration += durationMap[key];
+        }
+        const totalDurationText = totalDuration > 0 ? ` | 总耗时: ${formatDuration(totalDuration)}` : '';
+
+        // 更新日志文案
+        logSummary.textContent = `📋 运行日志 (已完成: ${done.length}, 进行中: ${running.length}, 共 ${totalNodes} 步${totalDurationText})`;
+
+        logListEl.innerHTML = '';
+
+        for (const item of done) {
+            if (item === 'upload_file') continue;
+
+            const li = document.createElement('li');
+            const nameSpan = document.createElement('span');
+            nameSpan.textContent = `${normalizeLogText(item)} 节点执行完成`;
+            li.appendChild(nameSpan);
+
+            // 添加耗时标签
+            if (durationMap[item] !== undefined) {
+                const durationSpan = document.createElement('span');
+                durationSpan.className = 'log-duration';
+                durationSpan.textContent = formatDuration(durationMap[item]);
+                li.appendChild(durationSpan);
+            }
+
+            li.className = 'log-done';
+            logListEl.appendChild(li);
+        }
+
+        for (const item of running) {
+            const li = document.createElement('li');
+            li.textContent = `正在处理 ${normalizeLogText(item)} 节点...`;
+            li.className = 'log-running';
+            logListEl.appendChild(li);
+        }
+
+        logListEl.scrollTop = logListEl.scrollHeight;
+
+        return currentPercentage;
+    }
+
+    function pollStatus(taskId, itemEl, totalNodes) {
+        const statusBadge = itemEl.querySelector('.status-badge');
+        const progressWrapper = itemEl.querySelector('.progress-wrapper');
+        const logDetails = itemEl.querySelector('.log-details');
+        let stopped = false;
+
+        const interval = setInterval(async () => {
+            if (stopped) return;
+
+            try {
+                const res = await fetch(`${API_BASE}/status/${taskId}`);
+                if (!res.ok) throw new Error('Status request failed');
+
+                const data = await res.json();
+
+                if (stopped) return;
+
+                // 传入 totalNodes 继续计算
+                const calculatedPercentage = renderLogsAndCalculateProgress(itemEl, data.done_list, data.running_list, totalNodes, data.durations);
+
+                if (data.status === 'completed') {
+                    stopped = true;
+                    clearInterval(interval);
+                    statusBadge.textContent = '已完成';
+                    statusBadge.className = 'status-badge status-completed';
+                    updateProgressUI(progressWrapper, 100);
+
+                    setTimeout(() => {
+                        logDetails.open = false;
+                    }, 1000);
+
+                } else if (data.status === 'failed') {
+                    stopped = true;
+                    clearInterval(interval);
+                    statusBadge.textContent = '失败';
+                    statusBadge.className = 'status-badge status-error';
+
+                    const logListEl = itemEl.querySelector('.log-list');
+                    const errLog = document.createElement('li');
+                    errLog.textContent = "❌ 工作流执行失败中止";
+                    errLog.style.color = "#ef4444";
+                    logListEl.appendChild(errLog);
+
+                } else if (data.status === 'processing') {
+                    updateProgressUI(progressWrapper, calculatedPercentage);
+                }
+            } catch (e) {
+                console.error('Polling error', e);
+            }
+        }, 1500);
+    }
+</script>
+
+</body>
+</html>
