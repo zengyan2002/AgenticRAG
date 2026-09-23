@@ -63,6 +63,15 @@ class StateFieldError(QueryProcessError):
             message: str = "",
             cause: Exception = None,
     ):
+        """初始化 StateFieldError 实例及其依赖。
+
+        Args:
+            node_name: 当前节点名称。
+            field_name: 校验失败的字段名称。
+            expected_type: 字段应满足的数据类型。
+            message: 需要发送或记录的消息文本。
+            cause: 导致当前异常的原始异常。
+        """
         self.field_name = field_name
         self.expected_type = expected_type
         if not message:

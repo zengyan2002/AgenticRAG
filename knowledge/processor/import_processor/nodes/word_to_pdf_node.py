@@ -18,6 +18,7 @@ class WordToPdfNode(BaseNode):
     name = "word_to_pdf_node"
 
     def process(self, state: ImportGraphState) -> ImportGraphState:
+        """将入库状态中的 Word 文档转换为 PDF 并更新文件路径。"""
         word_path_value = state.get("word_path")
         if not word_path_value:
             raise StateFieldError(
@@ -60,6 +61,17 @@ class WordToPdfNode(BaseNode):
         return state
 
     def _find_libreoffice(self) -> Optional[str]:
+        """查找可用的 LibreOffice 命令行程序。
+
+        优先使用配置路径，其次查询系统 ``PATH``，最后检查 Windows
+        标准安装目录。
+
+        Returns:
+            可执行文件路径；未找到时返回 ``None``。
+
+        Raises:
+            FileProcessingError: 已配置的可执行文件不存在时抛出。
+        """
         configured_path = (self.config.libreoffice_path or "").strip()
         if configured_path:
             configured = Path(configured_path)
@@ -93,6 +105,16 @@ class WordToPdfNode(BaseNode):
             output_dir: Path,
             executable: str,
     ) -> None:
+        """使用 LibreOffice Headless 将 Word 文档转换为 PDF。
+
+        Args:
+            word_path: 待转换的 Word 文件路径。
+            output_dir: PDF 输出目录。
+            executable: LibreOffice 可执行文件路径。
+
+        Raises:
+            FileProcessingError: 转换进程启动失败、超时或返回非零状态时抛出。
+        """
         command = [
             executable,
             "--headless",
@@ -128,6 +150,15 @@ class WordToPdfNode(BaseNode):
             word_path: Path,
             pdf_path: Path,
     ) -> None:
+        """在 Windows 上通过 Microsoft Word COM 导出 PDF。
+
+        Args:
+            word_path: 待转换的 Word 文件路径。
+            pdf_path: 目标 PDF 文件路径。
+
+        Raises:
+            FileProcessingError: 缺少 COM 依赖、Word 不可用或导出失败时抛出。
+        """
         try:
             import pythoncom
             import win32com.client

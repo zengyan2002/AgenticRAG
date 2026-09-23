@@ -28,10 +28,23 @@ class StorageClients(BaseClientManager):
 
     @classmethod
     def get_minio(cls) -> Minio:
+        """获取MinIO 数据。
+
+        Returns:
+            处理结果。
+        """
         return cls._get_or_create("_minio_client", cls._minio_lock, cls._create_minio)
 
     @classmethod
     def _create_minio(cls) -> Minio:
+        """创建MinIO 数据。
+
+        Returns:
+            处理结果。
+
+        Raises:
+            ConnectionError: 输入无效或处理过程无法继续时抛出。
+        """
         try:
             settings = get_settings()
             endpoint, access_key, secret_key, bucket_name = settings.require(
@@ -67,10 +80,23 @@ class StorageClients(BaseClientManager):
 
     @classmethod
     def get_milvus(cls) -> MilvusClient:
+        """获取Milvus 数据。
+
+        Returns:
+            处理结果。
+        """
         return cls._get_or_create("_milvus_client", cls._milvus_lock, cls._create_milvus)
 
     @classmethod
     def _create_milvus(cls) -> MilvusClient:
+        """创建Milvus 数据。
+
+        Returns:
+            处理结果。
+
+        Raises:
+            ConnectionError: 输入无效或处理过程无法继续时抛出。
+        """
         try:
             uri = get_settings().require("milvus_url")[0]
             client = MilvusClient(uri=uri)
@@ -87,6 +113,11 @@ class StorageClients(BaseClientManager):
 
     @classmethod
     def get_mongo_db(cls) -> Database:
+        """获取MongoDB 数据db。
+
+        Returns:
+            处理结果。
+        """
         return cls._get_or_create(
             "_mongo_db",
             cls._mongo_lock,
@@ -95,6 +126,14 @@ class StorageClients(BaseClientManager):
 
     @classmethod
     def _create_mongo_db(cls) -> Database:
+        """创建MongoDB 数据db。
+
+        Returns:
+            处理结果。
+
+        Raises:
+            ConnectionError: 输入无效或处理过程无法继续时抛出。
+        """
         try:
             mongo_url, database_name = get_settings().require(
                 "mongo_url",

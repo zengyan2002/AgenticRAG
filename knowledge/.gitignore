@@ -8,5 +8,11 @@ temp_data/
 
 # 私有测试与离线评测数据（仅保留在本地）
 tests/
+# 入库幂等属于核心数据安全逻辑，保留其无外部依赖的回归测试。
+!tests/
+tests/*
+!tests/test_import_idempotency.py
+# 多子问题检索的回归测试仅使用合成数据和模拟服务。
+!tests/test_subquestion_retrieval.py
 evaluation/benchmark.json
 evaluation/results/

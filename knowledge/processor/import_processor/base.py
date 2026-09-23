@@ -11,6 +11,8 @@ import logging
 from knowledge.processor.import_processor.config import ImportConfig, get_config
 from knowledge.processor.import_processor.exceptions import ImportProcessError
 from knowledge.utils.task_util import add_running_task, add_done_task, add_node_duration
+from knowledge.core.settings import get_settings
+from knowledge.utils.import_checkpoint_util import save_import_checkpoint
 
 T = TypeVar("T")  # 泛型状态类型
 
@@ -80,6 +82,12 @@ class BaseNode(ABC):
             # 3. 执行节点成功
             self.logger.info(f"--- {self.name} 完成 ---")
             end_time = time.perf_counter()
+
+            if getattr(get_settings(), "import_checkpoint_enabled", False):
+                save_import_checkpoint(
+                    result,
+                    checkpoint_node=self.name,
+                )
 
             # 添加当前节点到 done列表
             add_done_task(task_id,self.name)

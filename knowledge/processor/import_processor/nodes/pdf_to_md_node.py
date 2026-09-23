@@ -15,6 +15,14 @@ class PdfToMdNode(BaseNode):
 
     def process(self, state: ImportGraphState) -> ImportGraphState:
         # 1 上传并轮询MinerU的解析结果
+        """执行 PdfToMdNode 的核心处理流程。
+
+        Args:
+            state: 当前工作流状态。
+
+        Returns:
+            处理结果。
+        """
         zip_url = self._upload_pdf_and_query_result(Path(state.get("pdf_path")))
 
         # 2 下载ZIP并提取MD文件
@@ -27,6 +35,18 @@ class PdfToMdNode(BaseNode):
 
     def _upload_pdf_and_query_result(self, pdf_path_obj: Path) -> str:
         # 1 检查MinerU的配置
+        """上传pdfand查询结果。
+
+        Args:
+            pdf_path_obj: 待解析 PDF 文件的 Path 对象。
+
+        Returns:
+            处理后的字符串。
+
+        Raises:
+            ValidationError: 输入无效或处理过程无法继续时抛出。
+            RuntimeError: 输入无效或处理过程无法继续时抛出。
+        """
         mineru_api_token = self.config.mineru_api_token
         mineru_base_url = self.config.mineru_base_url
         if not mineru_api_token or not mineru_base_url:
@@ -135,6 +155,19 @@ class PdfToMdNode(BaseNode):
 
     def _download_extract_md(self, zip_url: str,file_dir_obj:Path,pdf_path_obj:Path) -> str:
         #1 发送get请求下载zip包
+        """下载extractmd。
+
+        Args:
+            zip_url: MinerU 解析结果压缩包的下载地址。
+            file_dir_obj: 本次文件处理目录的 Path 对象。
+            pdf_path_obj: 待解析 PDF 文件的 Path 对象。
+
+        Returns:
+            处理后的字符串。
+
+        Raises:
+            RuntimeError: 输入无效或处理过程无法继续时抛出。
+        """
         try:
             response = requests.get(zip_url, timeout=20)
         except requests.RequestException as e:

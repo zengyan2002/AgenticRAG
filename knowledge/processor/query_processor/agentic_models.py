@@ -21,6 +21,16 @@ RetrievalProfile = Literal["fast", "deep", "comparison"]
 RetrievalTool = Literal["vector", "hyde", "bm25"]
 
 
+class RetrievalTask(BaseModel):
+    """一个答题维度及其检索表达；索引在整个查询生命周期内保持不变。"""
+
+    subquestion_index: int = Field(ge=0, strict=True)
+    search_queries: list[str] = Field(default_factory=list)
+    retrieval_tools: list[RetrievalTool] = Field(default_factory=list)
+    depends_on: list[int] = Field(default_factory=list)
+    resolved_question: str = ""
+
+
 class AgentPlan(BaseModel):
     """Planner 生成的受控执行计划。"""
 
@@ -28,6 +38,7 @@ class AgentPlan(BaseModel):
     objective: str = ""
     sub_questions: list[str] = Field(default_factory=list)
     search_queries: list[str] = Field(default_factory=list)
+    retrieval_tasks: list[RetrievalTask] = Field(default_factory=list)
     document_hints: list[str] = Field(default_factory=list)
     retrieval_profile: RetrievalProfile = "deep"
     retrieval_tools: list[RetrievalTool] = Field(default_factory=list)
@@ -39,6 +50,8 @@ class EvidenceEvaluation(BaseModel):
 
     sufficient: bool = False
     covered_sub_questions: list[int] = Field(default_factory=list)
+    missing_subquestion_indices: list[int] = Field(default_factory=list)
+    followup_tasks: list[RetrievalTask] = Field(default_factory=list)
     missing_aspects: list[str] = Field(default_factory=list)
     contradictions: list[str] = Field(default_factory=list)
     next_action: Literal[

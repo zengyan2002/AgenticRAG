@@ -8,10 +8,11 @@ from typing import Iterable
 
 from knowledge.processor.query_processor.base import BaseNode
 from knowledge.processor.query_processor.state import QueryGraphState
+from knowledge.utils.subquestion_retrieval_util import reset_group_state
 
 
 class AgentRouterNode(BaseNode):
-    """使用低成本确定性规则路由简单与复杂查询。"""
+    """优先使用查询理解模型的判断，判断不可用时按规则分流。"""
 
     name = "agent_router_node"
 
@@ -35,6 +36,15 @@ class AgentRouterNode(BaseNode):
     )
 
     def process(self, state: QueryGraphState) -> QueryGraphState:
+        """执行 AgentRouterNode 的核心处理流程。
+
+        Args:
+            state: 当前工作流状态。
+
+        Returns:
+            处理结果。
+        """
+        reset_group_state(state)
         state["agentic_active"] = False
         state["agentic_route_reason"] = "disabled"
         state["agent_plan"] = {}
@@ -80,7 +90,12 @@ class AgentRouterNode(BaseNode):
         active = mode == "agentic"
         reason = "forced_agentic" if active else "simple_query"
         if mode == "hybrid":
-            active, reason = self._is_complex(query, retrieval_queries)
+            needs_planning = state.get("query_needs_planning")
+            if type(needs_planning) is bool:
+                active = needs_planning
+                reason = "llm_needs_planning" if active else "llm_simple_query"
+            else:
+                active, reason = self._is_complex(query, retrieval_queries)
 
         state["agentic_active"] = active
         state["agentic_route_reason"] = reason
@@ -94,6 +109,15 @@ class AgentRouterNode(BaseNode):
         query: str,
         retrieval_queries: Iterable[str],
     ) -> tuple[bool, str]:
+        """判断complex是否满足条件。
+
+        Args:
+            query: 用户查询文本。
+            retrieval_queries: 当前计划产生的检索查询列表。
+
+        Returns:
+            处理结果。
+        """
         queries = cls._valid_queries(retrieval_queries)
         if cls._MULTI_HOP_PATTERN.search(query):
             return True, "multi_hop"
@@ -115,6 +139,14 @@ class AgentRouterNode(BaseNode):
 
     @staticmethod
     def _valid_queries(values: Iterable[str]) -> list[str]:
+        """校验查询集合。
+
+        Args:
+            values: 待处理的输入值集合。
+
+        Returns:
+            处理结果。
+        """
         return [
             value.strip()
             for value in values

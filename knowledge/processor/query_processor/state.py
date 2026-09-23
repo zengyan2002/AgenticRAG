@@ -5,6 +5,7 @@
 
 from typing import Any, TypedDict, List, Literal
 import copy
+from knowledge.utils.subquestion_retrieval_util import GROUP_STATE_DEFAULTS
 
 
 class QueryGraphState(TypedDict):
@@ -49,9 +50,27 @@ class QueryGraphState(TypedDict):
     rewritten_query: str  #重写答案
     retrieval_queries: List[str]  # 原问题及比较/多事实子问题
     query_decomposed: bool
+    query_needs_planning: bool | None  # 查询理解模型的分流判断；None 表示规则兜底
     agentic_active: bool  # 当前查询是否进入 Agentic 闭环
     agentic_route_reason: str  # 进入或跳过 Agentic 的原因
     agent_plan: dict[str, Any]  # Planner 的结构化计划
+    active_subquestion_indices: list[int]
+    active_retrieval_tasks: list[dict]
+    subquestion_vector_chunks: dict[str, list]
+    subquestion_bm25_chunks: dict[str, list]
+    subquestion_hyde_chunks: dict[str, list]
+    subquestion_rrf_chunks: dict[str, list]
+    subquestion_rerank_candidates: dict[str, list]
+    subquestion_evidence: dict[str, list]
+    subquestion_retrieval_history: dict[str, list]
+    subquestion_resolved_questions: dict[str, str]
+    vector_retrieval_calls: int
+    bm25_retrieval_calls: int
+    hyde_retrieval_calls: int
+    vector_retrieval_errors: list
+    bm25_retrieval_errors: list
+    hyde_retrieval_errors: list
+    agent_new_evidence_pairs: list
     agent_selected_tools: List[str]  # 本轮允许执行的检索工具
     agent_iteration: int  # 当前检索轮次，从1开始
     agent_tool_calls: int  # 计划内累计检索工具调用数
@@ -74,6 +93,7 @@ class QueryGraphState(TypedDict):
 # ==================== 默认状态 ====================
 
 DEFAULT_STATE: QueryGraphState = {
+    **GROUP_STATE_DEFAULTS,
     "session_id": "",               # 会话ID
     "task_id": "",               # 任务ID
     "original_query": "",           # 原始查询
@@ -110,6 +130,7 @@ DEFAULT_STATE: QueryGraphState = {
     "rewritten_query": "",          # 重写查询
     "retrieval_queries": [],         # 原问题及子问题
     "query_decomposed": False,
+    "query_needs_planning": None,
     "agentic_active": False,
     "agentic_route_reason": "disabled",
     "agent_plan": {},

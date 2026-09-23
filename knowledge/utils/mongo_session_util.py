@@ -31,6 +31,14 @@ def ensure_session_indexes() -> None:
 
 
 def _serialize_session(document: Dict[str, Any]) -> Dict[str, Any]:
+    """将 MongoDB 会话记录转换为接口返回结构。
+
+    Args:
+        document: 待处理的文档数据。
+
+    Returns:
+        处理结果。
+    """
     if not document:
         return {}
 

@@ -7,7 +7,8 @@ from knowledge.prompts.query_prompt import (
     ANSWER_USER_PROMPT_TEMPLATE,
 )
 from knowledge.utils.clients.ai_clients import AIClients
-from knowledge.utils.evidence_packing_util import coverage_ordered_documents
+from knowledge.utils.evidence_packing_util import coverage_ordered_documents, format_grouped_evidence
+from knowledge.utils.subquestion_retrieval_util import grouped_retrieval
 from knowledge.utils.mongo_history_util import save_chat_message
 from knowledge.utils.sse_util import push_sse_event, SSEEvent
 from knowledge.utils.task_util import set_task_result
@@ -18,6 +19,14 @@ class AnswerOutputNode(BaseNode):
 
     def process(self, state: QueryGraphState) -> QueryGraphState:
         # 1 获取用户的问题（重写后）
+        """执行 AnswerOutputNode 的核心处理流程。
+
+        Args:
+            state: 当前工作流状态。
+
+        Returns:
+            处理结果。
+        """
         user_query = state.get("rewritten_query")
 
         # 获取task_id
@@ -48,12 +57,22 @@ class AnswerOutputNode(BaseNode):
 
         # 保存历史会话到MongoDb
         self._save_to_mongo_db(state)
-        
+
         return state
 
     # 输出已有答案
     def _push_exist_answer(self, answer: str, is_stream: bool, task_id: str):
         # 要是流式输出
+        """将已生成的答案写入任务结果或流式队列。
+
+        Args:
+            answer: 模型生成的答案文本。
+            is_stream: 是否以流式方式返回答案。
+            task_id: 异步任务唯一标识。
+
+        Returns:
+            处理结果。
+        """
         if is_stream:
             # 使用SSE队列
             push_sse_event(task_id, SSEEvent.FINAL, {"answer": answer})
@@ -64,6 +83,15 @@ class AnswerOutputNode(BaseNode):
     # 构建答案生成的上下文
     def _build_answer_prompt(self, state, max_context_chars):
         # max_context_chars 统一约束“检索文档 + 历史对话”的动态上下文长度。
+        """构建答案提示词。
+
+        Args:
+            state: 当前工作流状态。
+            max_context_chars: 回答上下文允许包含的最大字符数。
+
+        Returns:
+            处理结果。
+        """
         max_context_chars = max(int(max_context_chars or 0), 0)
 
         # 优先使用已经改写为可独立理解的问题。
@@ -73,6 +101,10 @@ class AnswerOutputNode(BaseNode):
             or ""
         )
         theme_names = state.get("theme_names") or []
+        if grouped_retrieval(state):
+            questions = state["agent_plan"]["sub_questions"]
+            user_question += "\n请逐项回答以下子问题，结合证据比较；归属标签不是支持结论，无证据的部分明确说明：\n"
+            user_question += "\n".join(f"子问题{i}：{q}" for i, q in enumerate(questions))
         history_messages = state.get("history") or []
         # 优先使用 Rerank 后按章节边界扩展的上下文；
         # 旧数据无法扩展时会自动回退到原重排结果。
@@ -122,6 +154,10 @@ class AnswerOutputNode(BaseNode):
         """覆盖证据优先打包，并限制总预算及单篇证据长度。"""
         if max_chars <= 0:
             return ""
+
+        if any(d.get("retrieved_for_subquestions") for d in reranked_docs if isinstance(d, dict)):
+            return format_grouped_evidence(reranked_docs, max_chars,
+                self.config.answer_max_chars_per_evidence, selected_chunk_ids)
 
         content_list = []
         current_chars = 0
@@ -254,6 +290,15 @@ class AnswerOutputNode(BaseNode):
 
     #调用大模型生成答案
     def _generate_answer(self, prompt:str, state:QueryGraphState):
+        """生成答案。
+
+        Args:
+            prompt: 发送给模型的提示词。
+            state: 当前工作流状态。
+
+        Returns:
+            处理结果。
+        """
         task_id = state.get("task_id")
         #1 创建大模型对象
         try:
@@ -319,6 +364,14 @@ class AnswerOutputNode(BaseNode):
 
 
         #保存用户的对话内容
+        """保存toMongoDB 数据db。
+
+        Args:
+            state: 当前工作流状态。
+
+        Returns:
+            处理结果。
+        """
         save_chat_message(session_id=state.get("session_id"),
                           role="user",
                           text=(

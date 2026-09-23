@@ -27,6 +27,15 @@ def dotenv_value(name: str) -> str:
 
 
 def env_bool(name: str, default: bool = False) -> bool:
+    """读取并解析布尔类型的环境变量。
+
+    Args:
+        name: 待读取的环境变量名称。
+        default: 环境变量不存在时使用的默认值。
+
+    Returns:
+        条件成立时返回 ``True``，否则返回 ``False``。
+    """
     value = os.getenv(name)
     if value is None:
         return default
@@ -34,6 +43,15 @@ def env_bool(name: str, default: bool = False) -> bool:
 
 
 def env_list(name: str, default: Iterable[str] = ()) -> tuple[str, ...]:
+    """读取并解析列表类型的环境变量。
+
+    Args:
+        name: 待读取的环境变量名称。
+        default: 环境变量不存在时使用的默认值。
+
+    Returns:
+        处理结果。
+    """
     value = os.getenv(name)
     if not value:
         return tuple(default)
@@ -88,6 +106,9 @@ class Settings:
     bge_fp16: bool = field(
         default_factory=lambda: env_bool("BGE_FP16", False)
     )
+    bge_batch_size: int = field(
+        default_factory=lambda: max(1, int(os.getenv("BGE_BATCH_SIZE", "8")))
+    )
     bge_reranker_path: str = field(
         default_factory=lambda: os.getenv("BGE_RERANKER_LARGE", "")
     )
@@ -96,6 +117,9 @@ class Settings:
     )
     bge_reranker_fp16: bool = field(
         default_factory=lambda: env_bool("BGE_RERANKER_FP16", False)
+    )
+    bge_reranker_batch_size: int = field(
+        default_factory=lambda: max(1, int(os.getenv("BGE_RERANKER_BATCH_SIZE", "8")))
     )
 
     milvus_url: str = field(
@@ -122,6 +146,23 @@ class Settings:
     mongo_db_name: str = field(
         default_factory=lambda: os.getenv("MONGO_DB_NAME", "")
     )
+    import_registry_collection: str = field(
+        default_factory=lambda: os.getenv(
+            "IMPORT_REGISTRY_COLLECTION",
+            "kb_import_registry_v1",
+        )
+    )
+    document_version_registry_collection: str = field(
+        default_factory=lambda: os.getenv(
+            "DOCUMENT_VERSION_REGISTRY_COLLECTION",
+            "kb_document_versions_v1",
+        )
+    )
+    import_claim_lease_seconds: int = field(
+        default_factory=lambda: int(
+            os.getenv("IMPORT_CLAIM_LEASE_SECONDS", "14400")
+        )
+    )
 
     cors_origins: tuple[str, ...] = field(
         default_factory=lambda: env_list("CORS_ORIGINS", ("*",))
@@ -135,6 +176,9 @@ class Settings:
     )
     keep_failed_artifacts: bool = field(
         default_factory=lambda: env_bool("KEEP_FAILED_ARTIFACTS", True)
+    )
+    import_checkpoint_enabled: bool = field(
+        default_factory=lambda: env_bool("IMPORT_CHECKPOINT_ENABLED", True)
     )
 
     def require(self, *attribute_names: str) -> tuple[str, ...]:
@@ -170,6 +214,11 @@ _settings: Settings | None = None
 
 
 def get_settings() -> Settings:
+    """获取配置。
+
+    Returns:
+        处理结果。
+    """
     global _settings
     if _settings is None:
         _settings = Settings()

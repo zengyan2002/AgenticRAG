@@ -5,6 +5,8 @@ from typing import Any, Iterable
 
 CHUNK_OUTPUT_FIELDS = [
     "chunk_id", "content", "theme_name", "title", "doc_id",
+    "source_hash", "version_id",
+    "logical_document_id", "version_status", "is_active",
     "canonical_title", "primary_subject", "document_type",
     "document_summary", "parent_title", "file_title", "section_id",
     "section_path", "parent_summary", "chunk_index",
@@ -13,6 +15,14 @@ CHUNK_OUTPUT_FIELDS = [
 
 
 def hit_to_chunk(hit: Any) -> dict[str, Any]:
+    """将 Milvus 命中记录转换为统一切片结构。
+
+    Args:
+        hit: Milvus 返回的单条命中记录。
+
+    Returns:
+        处理结果。
+    """
     getter = hit.get if hasattr(hit, "get") else lambda _key: None
     hit_id = getattr(hit, "id", None)
     if isinstance(hit, dict):

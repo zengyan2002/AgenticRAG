@@ -9,11 +9,23 @@ class ImportProcessError(Exception):
     """导入流程基础异常"""
 
     def __init__(self, message: str, node_name: str = "", cause: Exception = None):
+        """初始化 ImportProcessError 实例及其依赖。
+
+        Args:
+            message: 需要发送或记录的消息文本。
+            node_name: 当前节点名称。
+            cause: 导致当前异常的原始异常。
+        """
         self.node_name = node_name
         self.cause = cause
         super().__init__(message)
 
     def __str__(self):
+        """返回当前异常的可读字符串。
+
+        Returns:
+            处理后的字符串。
+        """
         parts = []
         if self.node_name:
             parts.append(f"[{self.node_name}]")
@@ -42,6 +54,15 @@ class StateFieldError(ImportProcessError):
             message: str = "",
             cause: Exception = None,
     ):
+        """初始化 StateFieldError 实例及其依赖。
+
+        Args:
+            node_name: 当前节点名称。
+            field_name: 校验失败的字段名称。
+            expected_type: 字段应满足的数据类型。
+            message: 需要发送或记录的消息文本。
+            cause: 导致当前异常的原始异常。
+        """
         self.field_name = field_name
         self.expected_type = expected_type
         if not message:

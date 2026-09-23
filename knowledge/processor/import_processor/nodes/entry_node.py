@@ -10,6 +10,18 @@ class EntryNode(BaseNode):
     name = "entry_node"
     def process(self, state: ImportGraphState) -> ImportGraphState:
         #1. 获取state中的import_file_path、file_dir，并且判断是否为空
+        """执行 EntryNode 的核心处理流程。
+
+        Args:
+            state: 当前工作流状态。
+
+        Returns:
+            处理结果。
+
+        Raises:
+            StateFieldError: 输入无效或处理过程无法继续时抛出。
+            ValidationError: 输入无效或处理过程无法继续时抛出。
+        """
         self.log_step(step_name="STEP1",message="获取state中的import_file_path、file_dir，并且判断是否为空")
         import_file_path = state["import_file_path"]
         file_dir = state["file_dir"]

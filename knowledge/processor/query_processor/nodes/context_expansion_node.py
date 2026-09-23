@@ -37,6 +37,14 @@ class ContextExpansionNode(BaseNode):
     ]
 
     def process(self, state: QueryGraphState) -> QueryGraphState:
+        """执行 ContextExpansionNode 的核心处理流程。
+
+        Args:
+            state: 当前工作流状态。
+
+        Returns:
+            处理结果。
+        """
         reranked_docs = state.get("reranked_docs") or []
         if not reranked_docs:
             state["expanded_docs"] = []
@@ -44,26 +52,38 @@ class ContextExpansionNode(BaseNode):
 
         top_k = max(int(self.config.context_expansion_top_k or 0), 0)
         expanded_docs: List[Dict[str, Any]] = []
+        expanded_groups = set()
 
         for rank, doc in enumerate(reranked_docs):
             if not isinstance(doc, dict):
                 continue
             normalized_doc = dict(doc)
+            groups = set(normalized_doc.get("retrieved_for_subquestions") or [])
             # 比较题/多事实题中被覆盖保护的证据即使排在普通 Top-K
             # 之外，也需要扩展相邻上下文，避免只保留孤立切片。
             should_expand = top_k > 0 and (
                 rank < top_k
                 or bool(normalized_doc.get("coverage_protected"))
                 or bool(normalized_doc.get("conflict_judge_promoted"))
+                or bool(groups - expanded_groups)
             )
             if should_expand:
                 normalized_doc = self._expand_document(normalized_doc)
+                expanded_groups.update(groups)
             expanded_docs.append(normalized_doc)
 
         state["expanded_docs"] = expanded_docs
         return state
 
     def _expand_document(self, anchor: Dict[str, Any]) -> Dict[str, Any]:
+        """围绕命中切片补充同文档的相邻上下文。
+
+        Args:
+            anchor: 用于扩展相邻上下文的命中切片。
+
+        Returns:
+            处理结果。
+        """
         section_id = str(anchor.get("section_id") or "").strip()
         section_chunk_index = anchor.get("section_chunk_index")
         if (
@@ -84,6 +104,10 @@ class ContextExpansionNode(BaseNode):
             if self._SECTION_ID_PATTERN.fullmatch(doc_id)
             else ""
         )
+        active_filter = (
+            " and is_active == true"
+            if self.config.active_version_filter_enabled else ""
+        )
 
         try:
             milvus_client = StorageClients.get_milvus()
@@ -94,6 +118,7 @@ class ContextExpansionNode(BaseNode):
                     f"section_chunk_index >= {lower_bound} and "
                     f"section_chunk_index <= {upper_bound}"
                     f"{document_filter}"
+                    f"{active_filter}"
                 ),
                 output_fields=self._OUTPUT_FIELDS,
                 limit=window * 2 + 1,
@@ -122,6 +147,15 @@ class ContextExpansionNode(BaseNode):
             anchor: Dict[str, Any],
             neighbors: List[Dict[str, Any]],
     ) -> Dict[str, Any]:
+        """构建扩展结果文档。
+
+        Args:
+            anchor: 用于扩展相邻上下文的命中切片。
+            neighbors: 命中切片前后的相邻切片。
+
+        Returns:
+            处理结果。
+        """
         anchor_index = anchor.get("section_chunk_index")
         anchor_chunk_id = anchor.get("chunk_id")
         max_chars = max(int(self.config.context_expansion_max_chars or 0), 0)

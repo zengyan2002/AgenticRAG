@@ -16,6 +16,11 @@ from knowledge.utils.document_identity_util import build_chunk_retrieval_text
 
 
 def parse_args():
+    """解析命令行参数。
+
+    Returns:
+        处理结果。
+    """
     parser = argparse.ArgumentParser(description="迁移切片并创建BM25索引")
     parser.add_argument(
         "--source",
@@ -31,11 +36,30 @@ def parse_args():
 
 
 def collection_count(client, collection_name: str) -> int:
+    """统计指定 Milvus Collection 的实体数量。
+
+    Args:
+        client: 用于执行当前操作的客户端。
+        collection_name: 目标 Milvus Collection 名称。
+
+    Returns:
+        处理结果。
+    """
     stats = client.get_collection_stats(collection_name)
     return int(stats.get("row_count", 0))
 
 
 def create_target(client, target: str, config: ImportConfig) -> None:
+    """创建target。
+
+    Args:
+        client: 用于执行当前操作的客户端。
+        target: 迁移或校验的目标字段。
+        config: 当前流程配置。
+
+    Returns:
+        None。
+    """
     schema = _MilvusSchemaBuilder.build_schema(
         client,
         config.embedding_dim,
@@ -67,6 +91,17 @@ def ensure_analyzer_compatibility(server_version: str, analyzer_type: str) -> No
 
 
 def clean_row(row: dict) -> dict:
+    """清理迁移数据行并补充 BM25 所需字段。
+
+    Args:
+        row: 当前待清洗的 Milvus 数据行。
+
+    Returns:
+        处理结果。
+
+    Raises:
+        ValueError: 输入无效或处理过程无法继续时抛出。
+    """
     result = dict(row)
     result.pop("bm25_sparse_vector", None)
     result["retrieval_text"] = build_chunk_retrieval_text(result)
@@ -76,6 +111,15 @@ def clean_row(row: dict) -> dict:
 
 
 def main() -> int:
+    """执行 Milvus BM25 数据迁移脚本。
+
+    Returns:
+        处理结果。
+
+    Raises:
+        ValueError: 输入无效或处理过程无法继续时抛出。
+        RuntimeError: 输入无效或处理过程无法继续时抛出。
+    """
     args = parse_args()
     if args.source == args.target:
         raise ValueError("源Collection和目标Collection不能相同")

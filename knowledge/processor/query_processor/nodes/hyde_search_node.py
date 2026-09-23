@@ -4,6 +4,9 @@ import time
 from knowledge.processor.query_processor.base import BaseNode
 from knowledge.processor.query_processor.exceptions import StateFieldError, LLMError
 from knowledge.processor.query_processor.state import QueryGraphState
+from knowledge.utils.subquestion_retrieval_util import (
+    grouped_retrieval, run_grouped_branch, budgeted_retrieval_client, grouped_scope_locked,
+)
 from knowledge.prompts.query_prompt import HYDE_USER_PROMPT_TEMPLATE, HYDE_SYSTEM_PROMPT_TEMPLATE
 from knowledge.utils.clients.ai_clients import AIClients
 from knowledge.utils.clients.storage_clients import StorageClients
@@ -21,8 +24,21 @@ from knowledge.utils.retrieval_result_util import (
 
 class HydeSearchNode(BaseNode):
     name = "hyde_search_node"
-    def process(self, state: QueryGraphState) -> dict[str, list]:
+    def process(self, state: QueryGraphState) -> dict:
+        if grouped_retrieval(state):
+            return run_grouped_branch(self, state, "hyde", "hyde_embedding_chunks", self.config.hyde_search_limit)
+        return self._process_ungrouped(state)
 
+    def _process_ungrouped(self, state: QueryGraphState) -> dict:
+
+        """执行 HydeSearchNode 的核心处理流程。
+
+        Args:
+            state: 当前工作流状态。
+
+        Returns:
+            处理结果。
+        """
         if (
             state.get("agentic_active")
             and (
@@ -35,16 +51,22 @@ class HydeSearchNode(BaseNode):
         #1 参数校验
         rewritten_query, hard_filter_doc_ids, soft_filter_doc_ids, document_context = self._valid_state(state)
         #2 利用LLM生成假设性文档
-        hypothetical_answer = self._generate_hypothetical_document(
+        hypothetical_document = self._generate_hypothetical_document(
             rewritten_query,
             document_context,
-        )
+        ).strip()
 
-        #3 将问题和假设性文档进行拼接，形成拼接文本
-        hypothetical_document = "\n".join([rewritten_query,hypothetical_answer])
+        # 标准 HyDE 只编码假设性文档。若生成失败则跳过该分支，避免
+        # 静默退化成一条与原问题向量检索重复的 Dense 检索。
+        if not hypothetical_document:
+            self.logger.warning("HyDE 未生成有效假设文档，跳过该检索分支")
+            return {
+                "hyde_embedding_chunks": [],
+                "hyde_route_fallback": False,
+            }
 
-        #4 将拼接文本向量化，然后在向量数据库中进行查询，得到查询结果
-        #4.1 获取bge-m3模型和milvus客户端
+        #3 只将假设性文档向量化，然后在向量数据库中进行查询
+        #3.1 获取bge-m3模型和milvus客户端
         try:
             bgem3_client = AIClients.get_bge_m3_client()
         except ConnectionError as e:
@@ -52,19 +74,19 @@ class HydeSearchNode(BaseNode):
             return {"hyde_embedding_chunks": []}
 
         try:
-            milvus_client = StorageClients.get_milvus()
+            milvus_client = budgeted_retrieval_client(StorageClients.get_milvus())
         except ConnectionError as e:
             self.logger.error(f"Failed to connect to Milvus. Reason: {e}")
             return {"hyde_embedding_chunks": []}
 
-        #4.2 调用bge_m3模型生成向量
+        #3.2 调用bge_m3模型生成向量
         try:
             embedding_result = bgem3_client.encode([hypothetical_document],return_dense=True,return_sparse=True)
         except Exception as e:
             self.logger.error(f"Failed to invoke bge-m3 model. Reason: {e}")
             return {"hyde_embedding_chunks": []}
 
-        #4.3 获取稠密向量和稀疏向量
+        #3.3 获取稠密向量和稀疏向量
         dense_vector = embedding_result["dense_vecs"][0].tolist()
         sparse_vector = embedding_result["lexical_weights"][0]
         sparse_vector = {
@@ -72,7 +94,18 @@ class HydeSearchNode(BaseNode):
             for token_id, weight in dict(sparse_vector).items()}
 
         def search(doc_ids=None):
-            expr, expr_params = _doc_ids_filter(doc_ids or [])
+            """检索数据。
+
+            Args:
+                doc_ids: 允许检索的文档标识集合。
+
+            Returns:
+                处理结果。
+            """
+            expr, expr_params = _doc_ids_filter(
+                doc_ids or [],
+                active_only=self.config.active_version_filter_enabled,
+            )
             if not self.config.hyde_use_sparse:
                 response = milvus_client.search(
                     collection_name=self.config.chunks_collection,
@@ -108,7 +141,7 @@ class HydeSearchNode(BaseNode):
         route_fallback = False
         if hard_filter_doc_ids:
             chunks = search(hard_filter_doc_ids)
-            if not chunks:
+            if not chunks and not grouped_scope_locked():
                 route_fallback = True
                 self.logger.warning("doc_id精确范围内无结果，自动回退全库HyDE检索")
                 chunks = search()
@@ -132,6 +165,17 @@ class HydeSearchNode(BaseNode):
     def _valid_state(self, state: QueryGraphState):
 
         # 获取theme_names和rewritten_query字段
+        """校验状态。
+
+        Args:
+            state: 当前工作流状态。
+
+        Returns:
+            处理结果。
+
+        Raises:
+            StateFieldError: 输入无效或处理过程无法继续时抛出。
+        """
         hard_filter_doc_ids = state.get("hard_filter_doc_ids") or []
         soft_filter_doc_ids = state.get("soft_filter_doc_ids") or []
         if state.get("agentic_active"):
@@ -173,6 +217,15 @@ class HydeSearchNode(BaseNode):
     def _generate_hypothetical_document(self, rewritten_query, document_context) -> str:
 
         #获取LLM客户端
+        """生成假设性文档。
+
+        Args:
+            rewritten_query: 经过补全和改写的查询文本。
+            document_context: 生成假设答案时使用的文档上下文。
+
+        Returns:
+            处理后的字符串。
+        """
         try:
             llm_client = AIClients.get_llm_client(
                 response_format=False,

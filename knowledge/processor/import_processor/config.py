@@ -128,6 +128,11 @@ class ImportConfig:
         return cls()
 
     def get_minio_base_url(self):
+        """获取MinIO 数据baseurl。
+
+        Returns:
+            处理结果。
+        """
         base_protocol = "https://" if self.minio_secure else "http://"
         return base_protocol + f"{self.minio_endpoint}"
 

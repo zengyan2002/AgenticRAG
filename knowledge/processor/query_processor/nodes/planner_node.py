@@ -9,6 +9,7 @@ from typing import Any
 
 from knowledge.processor.query_processor.agentic_models import (
     AgentPlan,
+    RetrievalTask,
     parse_json_object,
 )
 from knowledge.processor.query_processor.base import BaseNode
@@ -19,6 +20,7 @@ from knowledge.prompts.agentic_prompt import (
 )
 from knowledge.utils.clients.ai_clients import AIClients
 from knowledge.utils.document_identity_util import unique_strings
+from knowledge.utils.subquestion_retrieval_util import grouped_retrieval, reset_group_state, schedule_tasks
 
 
 class PlannerNode(BaseNode):
@@ -28,13 +30,21 @@ class PlannerNode(BaseNode):
     _VALID_TOOLS = ("vector", "hyde", "bm25")
 
     def process(self, state: QueryGraphState) -> QueryGraphState:
+        """执行 PlannerNode 的核心处理流程。
+
+        Args:
+            state: 当前工作流状态。
+
+        Returns:
+            处理结果。
+        """
         try:
             plan = self._invoke_planner(state)
+            plan = self._normalize_plan(plan, state)
         except Exception as exc:
             self.logger.warning("Agent Planner 失败，使用保守计划: %s", exc)
-            plan = self._fallback_plan(state)
+            plan = self._normalize_plan(self._fallback_plan(state), state)
 
-        plan = self._normalize_plan(plan, state)
         plan_data = plan.model_dump()
         queries = plan_data["search_queries"]
         selected_tools = plan_data["retrieval_tools"]
@@ -50,9 +60,26 @@ class PlannerNode(BaseNode):
         state["retrieval_queries"] = list(queries)
         state["query_decomposed"] = len(queries) > 1
         state["agent_stop_reason"] = ""
+        reset_group_state(state)
+        if grouped_retrieval(state):
+            state["agent_tool_calls"] = 0
+            ready = [task for task in plan_data["retrieval_tasks"] if not task["depends_on"]]
+            schedule_tasks(state, ready, self.config)
+            state["agent_retrieval_history"] = []
         return state
 
     def _invoke_planner(self, state: QueryGraphState) -> AgentPlan:
+        """调用规划模型生成结构化查询计划。
+
+        Args:
+            state: 当前工作流状态。
+
+        Returns:
+            处理结果。
+
+        Raises:
+            ValueError: 输入无效或处理过程无法继续时抛出。
+        """
         client = AIClients.get_llm_client(
             response_format=True,
             role="agent",
@@ -90,6 +117,15 @@ class PlannerNode(BaseNode):
         plan: AgentPlan,
         state: QueryGraphState,
     ) -> AgentPlan:
+        """规范化plan。
+
+        Args:
+            plan: 当前查询执行计划。
+            state: 当前工作流状态。
+
+        Returns:
+            处理结果。
+        """
         fallback_query = str(
             state.get("rewritten_query") or state.get("original_query") or ""
         ).strip()
@@ -138,10 +174,42 @@ class PlannerNode(BaseNode):
         if not criteria:
             criteria = [f"找到能够直接回答“{query}”的证据" for query in sub_questions]
 
+        # 索引直接对应原始 sub_questions，不能先去重再让任务索引错位。
+        if plan.retrieval_tasks:
+            sub_questions = [q.strip() for q in plan.sub_questions[:self.config.agent_max_subquestions]]
+            if not sub_questions or any(not q for q in sub_questions):
+                raise ValueError("任务引用的子问题不能为空")
+        task_map = {}
+        for task in plan.retrieval_tasks:
+            i = task.subquestion_index
+            if i >= len(sub_questions):
+                continue
+            previous = task_map.get(i)
+            queries = self._deduplicate_search_queries(
+                [*(previous.search_queries if previous else []), *task.search_queries],
+                source_query=sub_questions[i], max_items=2,
+            ) or [sub_questions[i]]
+            # 只允许依赖先前子问题，拒绝环和悬空依赖，而不是悄悄并行。
+            dependencies = list(dict.fromkeys([*(previous.depends_on if previous else []), *task.depends_on]))
+            if any(type(dep) is not int or dep < 0 or dep >= i for dep in dependencies):
+                raise ValueError("子问题依赖必须指向前序子问题")
+            task_tools = [t for t in (task.retrieval_tools or tools) if t in tools]
+            task_map[i] = RetrievalTask(subquestion_index=i, search_queries=queries,
+                                        retrieval_tools=task_tools or tools, depends_on=dependencies)
+        for i, question in enumerate(sub_questions):
+            task_map.setdefault(i, RetrievalTask(subquestion_index=i,
+                search_queries=[question], retrieval_tools=tools))
+        if len(sub_questions) == 1 and plan.retrieval_tasks:
+            search_queries = self._deduplicate_search_queries(
+                [fallback_query, *task_map[0].search_queries],
+                source_query=fallback_query, max_items=5,
+            )
+
         return plan.model_copy(update={
             "objective": plan.objective or fallback_query,
             "sub_questions": sub_questions,
             "search_queries": search_queries,
+            "retrieval_tasks": [task_map[i] for i in range(len(sub_questions))],
             "document_hints": unique_strings(
                 [*plan.document_hints, *self._document_hints(state)],
                 max_items=self.config.document_route_max_options,
@@ -185,6 +253,15 @@ class PlannerNode(BaseNode):
 
     @staticmethod
     def _queries_are_similar(left: str, right: str) -> bool:
+        """判断两个查询是否可视为相同检索意图。
+
+        Args:
+            left: 参与比较的左侧值。
+            right: 参与比较的右侧值。
+
+        Returns:
+            条件成立时返回 ``True``，否则返回 ``False``。
+        """
         if left == right:
             return True
         shorter, longer = sorted((left, right), key=len)
@@ -194,12 +271,28 @@ class PlannerNode(BaseNode):
 
     @staticmethod
     def _is_english_query(query: str) -> bool:
+        """判断english查询是否满足条件。
+
+        Args:
+            query: 用户查询文本。
+
+        Returns:
+            条件成立时返回 ``True``，否则返回 ``False``。
+        """
         return (
             not re.search(r"[\u4e00-\u9fff]", query)
             and len(re.findall(r"[A-Za-z]+", query)) >= 2
         )
 
     def _fallback_plan(self, state: QueryGraphState) -> AgentPlan:
+        """在规划模型不可用时构造保守查询计划。
+
+        Args:
+            state: 当前工作流状态。
+
+        Returns:
+            处理结果。
+        """
         reason = state.get("agentic_route_reason") or "multi_fact"
         if reason == "comparison":
             intent = "comparison"
@@ -223,12 +316,28 @@ class PlannerNode(BaseNode):
         )
 
     def _tools_for_profile(self, profile: str) -> list[str]:
+        """根据查询档案选择需要执行的检索工具。
+
+        Args:
+            profile: 当前命中的文档档案。
+
+        Returns:
+            处理结果。
+        """
         if profile == "fast" or not self.config.agent_hyde_enabled:
             return ["vector", "bm25"]
         return ["vector", "hyde", "bm25"]
 
     @staticmethod
     def _document_hints(state: QueryGraphState) -> list[str]:
+        """整理查询涉及的候选文档提示。
+
+        Args:
+            state: 当前工作流状态。
+
+        Returns:
+            处理结果。
+        """
         documents = (
             state.get("selected_documents")
             or state.get("document_candidates")

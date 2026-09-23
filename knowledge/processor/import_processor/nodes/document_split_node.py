@@ -16,6 +16,14 @@ class DocumentSplitNode(BaseNode):
     name = "document_split_node"
     def process(self, state: ImportGraphState) -> ImportGraphState:
         # 1 参数校验
+        """执行 DocumentSplitNode 的核心处理流程。
+
+        Args:
+            state: 当前工作流状态。
+
+        Returns:
+            处理结果。
+        """
         [md_content, file_title, min_content_length, max_content_length] = self._valid_state(state)
 
         # 2 按标题切分
@@ -39,6 +47,17 @@ class DocumentSplitNode(BaseNode):
     # 参数校验
     def _valid_state(self, state: ImportGraphState) -> Tuple[str, str, int, int]:
         # 1 获取md_content
+        """校验状态。
+
+        Args:
+            state: 当前工作流状态。
+
+        Returns:
+            处理结果。
+
+        Raises:
+            ValueError: 输入无效或处理过程无法继续时抛出。
+        """
         md_content = state["md_content"]
 
         # 2 统一换行符,先将"\r\n"替换成"\n\n"，再将"\r"替换成"\n"
@@ -71,6 +90,15 @@ class DocumentSplitNode(BaseNode):
     def _split_by_title(self, md_content: str, file_title: str) -> List[Dict[str, Any]]:
 
         # 文本块列表
+        """按照 Markdown 标题层级划分正文。
+
+        Args:
+            md_content: 待处理的 Markdown 正文。
+            file_title: 文档标题。
+
+        Returns:
+            处理结果。
+        """
         block_list = []
 
         # 1 将md_content按行切分
@@ -99,6 +127,11 @@ class DocumentSplitNode(BaseNode):
         # 声明一个内部方法用于收集某个标题对应的块的内容
         def _collection() -> None:
             #设置块文本内容
+            """收集当前标题下的正文并生成文本块。
+
+            Returns:
+                None。
+            """
             body = "\n".join(current_body).strip()
             #如果bod
             if not body:
@@ -178,6 +211,15 @@ class DocumentSplitNode(BaseNode):
 
     @staticmethod
     def _stable_section_id(file_title: str, section_path: str) -> str:
+        """根据文档标题和章节路径生成稳定章节标识。
+
+        Args:
+            file_title: 文档标题。
+            section_path: 当前章节的完整层级路径。
+
+        Returns:
+            处理后的字符串。
+        """
         raw_value = f"{file_title}\x1f{section_path}".encode("utf-8")
         return hashlib.sha256(raw_value).hexdigest()[:24]
 
@@ -190,6 +232,16 @@ class DocumentSplitNode(BaseNode):
 
     def _split_and_merge(self, block_list_by_title:List[Dict[str, Any]],min_content_length:int, max_content_length:int):
         #声明一个存储block的最后结果
+        """拆分过长文本块并合并过短文本块。
+
+        Args:
+            block_list_by_title: 按标题初步划分的文本块列表。
+            min_content_length: 触发短块合并的最小字符数。
+            max_content_length: 单个切片允许包含的最大字符数。
+
+        Returns:
+            处理结果。
+        """
         block_list_current = []
 
         #遍历block列表对每一个block进行二次切分
@@ -218,6 +270,15 @@ class DocumentSplitNode(BaseNode):
         #1 判断是否为长块，即是否超过了max_content_length
         #1.1 计算block的长度
         #1.1.1 获取block的title
+        """在保留章节信息的前提下拆分过长文本块。
+
+        Args:
+            block: 待拆分或合并的文本块。
+            max_content_length: 单个切片允许包含的最大字符数。
+
+        Returns:
+            处理结果。
+        """
         title = block.get("title")
         #如果标题太长，截取前80个字符
         if title and len(title)>80:
@@ -281,6 +342,16 @@ class DocumentSplitNode(BaseNode):
 
     def _merge_short_block(self, block_list_current,min_content_length:int, max_content_length:int):
 
+        """合并相邻的过短文本块。
+
+        Args:
+            block_list_current: 当前待合并的文本块列表。
+            min_content_length: 触发短块合并的最小字符数。
+            max_content_length: 单个切片允许包含的最大字符数。
+
+        Returns:
+            处理结果。
+        """
         if not block_list_current:
             return []
 
@@ -366,6 +437,15 @@ class DocumentSplitNode(BaseNode):
 
     def _backup_chunks(self, chunks:List[Dict[str,Any]], state:ImportGraphState):
         #保存的文件目录
+        """将切片中间结果备份到本地文件。
+
+        Args:
+            chunks: 待处理的文档切片列表。
+            state: 当前工作流状态。
+
+        Returns:
+            处理结果。
+        """
         file_dir = state.get("file_dir")
         if not file_dir:
             return

@@ -41,11 +41,29 @@ from knowledge.utils.task_util import get_task_result, get_done_task_list
 
 
 def register_router(router: APIRouter) -> None:
+    """注册路由。
+
+    Args:
+        router: 用于注册接口的 FastAPI 路由器。
+
+    Returns:
+        None。
+    """
     @router.post("/query",response_model=Union[QueryResponse,StreamSubmitResponse])
     async def query(request: QueryRequest,
                     background_tasks: BackgroundTasks,
                     query_service: QueryService = Depends(get_query_service))-> Union[QueryResponse,StreamSubmitResponse]:
         #获取session_id、task_id、query、is_stream
+        """提交文本查询并启动知识库问答流程。
+
+        Args:
+            request: 当前接口请求数据。
+            background_tasks: FastAPI 后台任务调度器。
+            query_service: 查询流程服务实例。
+
+        Returns:
+            处理结果。
+        """
         session_id = request.session_id or f"sess-{uuid.uuid4().hex}"
         task_id = str(uuid.uuid4().hex[:12])
         user_query = request.query
@@ -94,6 +112,22 @@ def register_router(router: APIRouter) -> None:
             is_stream: bool = Form(False),
             query_service: QueryService = Depends(get_query_service),
     ) -> Union[QueryResponse, StreamSubmitResponse]:
+        """提交图片查询并启动多模态问答流程。
+
+        Args:
+            background_tasks: FastAPI 后台任务调度器。
+            image: 用户上传的查询图片。
+            query: 用户查询文本。
+            session_id: 会话唯一标识。
+            is_stream: 是否以流式方式返回答案。
+            query_service: 查询流程服务实例。
+
+        Returns:
+            处理结果。
+
+        Raises:
+            HTTPException: 输入无效或处理过程无法继续时抛出。
+        """
         safe_session_id = session_id or f"sess-{uuid.uuid4().hex}"
         task_id = uuid.uuid4().hex[:12]
         user_query = query.strip()
@@ -141,12 +175,30 @@ def register_router(router: APIRouter) -> None:
     @router.get("/stream/{task_id}")
     async def stream(task_id:str,request:Request):
         #获取流式调用接口
+        """通过 SSE 持续推送异步任务结果。
+
+        Args:
+            task_id: 异步任务唯一标识。
+            request: 当前接口请求数据。
+
+        Returns:
+            处理结果。
+        """
         return StreamingResponse(content = sse_generator(task_id,request),
                                  media_type="text/event-stream")
 
     @router.delete("/history/{session_id}")
     def clear_history(session_id:str,
                       query_service: QueryService = Depends(get_query_service)):
+        """清理历史记录。
+
+        Args:
+            session_id: 会话唯一标识。
+            query_service: 查询流程服务实例。
+
+        Returns:
+            处理结果。
+        """
         clear_num = query_service.clear_history(session_id)
         return {
             "message": "历史会话已清空",
@@ -157,6 +209,15 @@ def register_router(router: APIRouter) -> None:
     @router.get("/history/{session_id}",response_model=HistoryResponse)
     def get_history(session_id:str,
                   query_service: QueryService = Depends(get_query_service)):
+        """获取历史记录。
+
+        Args:
+            session_id: 会话唯一标识。
+            query_service: 查询流程服务实例。
+
+        Returns:
+            处理结果。
+        """
         history_list = query_service.get_history(session_id)
         return HistoryResponse(
             session_id=session_id,
@@ -168,6 +229,18 @@ def register_router(router: APIRouter) -> None:
             request: SessionCreateRequest,
             query_service: QueryService = Depends(get_query_service),
     ):
+        """添加会话。
+
+        Args:
+            request: 当前接口请求数据。
+            query_service: 查询流程服务实例。
+
+        Returns:
+            处理结果。
+
+        Raises:
+            HTTPException: 输入无效或处理过程无法继续时抛出。
+        """
         try:
             return query_service.create_session(
                 session_id=request.session_id,
@@ -183,6 +256,16 @@ def register_router(router: APIRouter) -> None:
             limit: int = 50,
             query_service: QueryService = Depends(get_query_service),
     ):
+        """获取会话列表。
+
+        Args:
+            owner_id: 会话所属用户标识。
+            limit: 允许处理或返回的最大数量。
+            query_service: 查询流程服务实例。
+
+        Returns:
+            处理结果。
+        """
         safe_limit = max(1, min(limit, 200))
         return SessionListResponse(
             items=query_service.get_sessions(owner_id=owner_id, limit=safe_limit),
@@ -194,6 +277,19 @@ def register_router(router: APIRouter) -> None:
             request: SessionRenameRequest,
             query_service: QueryService = Depends(get_query_service),
     ):
+        """修改指定会话的标题。
+
+        Args:
+            session_id: 会话唯一标识。
+            request: 当前接口请求数据。
+            query_service: 查询流程服务实例。
+
+        Returns:
+            处理结果。
+
+        Raises:
+            HTTPException: 输入无效或处理过程无法继续时抛出。
+        """
         try:
             session = query_service.rename_session(
                 session_id=session_id,
@@ -213,6 +309,19 @@ def register_router(router: APIRouter) -> None:
             owner_id: str,
             query_service: QueryService = Depends(get_query_service),
     ):
+        """删除会话。
+
+        Args:
+            session_id: 会话唯一标识。
+            owner_id: 会话所属用户标识。
+            query_service: 查询流程服务实例。
+
+        Returns:
+            处理结果。
+
+        Raises:
+            HTTPException: 输入无效或处理过程无法继续时抛出。
+        """
         result = query_service.delete_session(
             session_id=session_id,
             owner_id=owner_id,
@@ -231,11 +340,24 @@ register_router(router)
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    """管理应用启动与关闭时的资源初始化。
+
+    Args:
+        _: 框架传入但当前无需使用的应用实例。
+
+    Returns:
+        处理结果。
+    """
     ensure_session_indexes()
     yield
 
 
 def create_app() -> FastAPI:
+    """创建并配置 FastAPI 应用实例。
+
+    Returns:
+        处理结果。
+    """
     settings = get_settings()
     app = FastAPI(
         title="科研文档知识库查询服务",
@@ -259,6 +381,11 @@ def create_app() -> FastAPI:
 
     @app.get("/health", tags=["运行状态"])
     def health() -> dict[str, str]:
+        """返回服务健康状态。
+
+        Returns:
+            处理结果。
+        """
         return {"service": "query", "status": "ok"}
 
     return app

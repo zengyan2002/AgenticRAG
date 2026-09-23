@@ -30,6 +30,18 @@ class ImportGraphState(TypedDict, total=False):
 
     task_id: str  # 任务 ID，用于任务追踪(web交互的时候用到，实时看到节点的处理日志)
 
+    source_hash: str  # 原始上传文件的 SHA-256，用于文件级幂等检查
+
+    version_id: str  # 当前内容版本标识
+
+    logical_document_id: str  # 跨内容版本保持稳定的逻辑文档标识
+
+    resource_objects: List[str]  # 当前版本写入 MinIO 的对象名清单
+
+    resume_after_node: str  # 恢复执行时最后一个已完成节点
+
+    embedding_completed_batches: List[int]  # 已成功完成的 Embedding 批次
+
     # ==================== 控制标志 ====================
 
     is_md_read_enabled: bool  # 是否启用 MD 读取
@@ -76,6 +88,18 @@ class ImportGraphState(TypedDict, total=False):
 GRAPH_DEFAULT_STATE: ImportGraphState = {
 
     "task_id": "",
+
+    "source_hash": "",
+
+    "version_id": "",
+
+    "logical_document_id": "",
+
+    "resource_objects": [],
+
+    "resume_after_node": "",
+
+    "embedding_completed_batches": [],
 
     "is_pdf_read_enabled": False,
 

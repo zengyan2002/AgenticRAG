@@ -8,6 +8,17 @@ class QueryTypeNode(BaseNode):
     name = "query_type_node"
 
     def process(self, state: QueryGraphState) -> QueryGraphState:
+        """根据文字和图片输入识别查询模态并初始化检索查询。
+
+        Args:
+            state: 包含原始文本和可选图片数据的查询图状态。
+
+        Returns:
+            写入 ``text``、``image`` 或 ``multimodal`` 类型后的状态。
+
+        Raises:
+            ValueError: 文字和图片输入均为空时抛出。
+        """
         original_query = (state.get("original_query") or "").strip()
         has_text = bool(original_query)
         has_image = bool(state.get("query_image_bytes"))

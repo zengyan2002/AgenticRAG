@@ -2,11 +2,17 @@ from typing import Any, Dict, List
 
 from knowledge.processor.query_processor.base import BaseNode, T
 from knowledge.processor.query_processor.state import QueryGraphState
+from knowledge.utils.subquestion_retrieval_util import grouped_retrieval
 
 
 class RRFMergeNode(BaseNode):
     name = "rrf_merge_node"
     def __init__(self, config=None):
+        """初始化 RRFMergeNode 实例及其依赖。
+
+        Args:
+            config: 当前流程配置。
+        """
         super().__init__(config=config)
         self._top_k = self.config.rrf_max_results
         self._rrf_k = self.config.rrf_k
@@ -15,6 +21,32 @@ class RRFMergeNode(BaseNode):
     def process(self, state: QueryGraphState) -> dict[str, list]:
         #1 获取各路检索结果
         #混合向量检索的查询结果
+        """执行 RRFMergeNode 的核心处理流程。
+
+        Args:
+            state: 当前工作流状态。
+
+        Returns:
+            处理结果。
+        """
+        if grouped_retrieval(state):
+            grouped = {}
+            for index in state.get("active_subquestion_indices") or []:
+                key = str(index)
+                local = {**state, "agentic_active": False,
+                         "embedding_chunks": (state.get("subquestion_vector_chunks") or {}).get(key, []),
+                         "hyde_embedding_chunks": (state.get("subquestion_hyde_chunks") or {}).get(key, []),
+                         "bm25_chunks": (state.get("subquestion_bm25_chunks") or {}).get(key, [])}
+                grouped[key] = self.process(local)["rrf_chunks"]
+            history = {k: list(v) for k, v in (state.get("subquestion_retrieval_history") or {}).items()}
+            for task in state.get("active_retrieval_tasks") or []:
+                key = str(task["subquestion_index"])
+                history[key] = list(dict.fromkeys([*history.get(key, []),
+                    *(op["query"] for op in task.get("operations", []))]))
+            return {"subquestion_rrf_chunks": grouped, "rrf_chunks": [],
+                    "subquestion_retrieval_history": history,
+                    "agent_tool_calls": int(state.get("agent_tool_calls") or 0) + sum(
+                        int(state.get(f"{tool}_retrieval_calls") or 0) for tool in ("vector", "bm25", "hyde"))}
         embedding_chunks =  state.get('embedding_chunks') or []
         #Hyde检索出的结果
         hyde_embedding_chunks = state.get('hyde_embedding_chunks') or []
@@ -57,7 +89,7 @@ class RRFMergeNode(BaseNode):
             (chunks, weight, source_name)
             for source_name, (chunks, weight) in search_source.items()
         ]
-        
+
         # 5 采用rrf进行融合
         rrf_result = self._rrf_merge(
             rrf_inputs,
@@ -99,6 +131,14 @@ class RRFMergeNode(BaseNode):
 
     @staticmethod
     def _normalize_chunk(chunk: Dict[str, Any]) -> Dict[str, Any]:
+        """规范化切片。
+
+        Args:
+            chunk: 待处理的文档切片。
+
+        Returns:
+            处理结果。
+        """
         fields = (
             "chunk_id",
             "title",
@@ -131,6 +171,17 @@ class RRFMergeNode(BaseNode):
     ):
 
         #声明记录分数的字典  key是chunk_id  value是分数
+        """使用 RRF 融合多条检索分支的排名。
+
+        Args:
+            rrf_inputs: 各检索分支返回的候选结果。
+            _rrf_k: RRF 排名融合中的平滑常量。
+            _top_k: 最终保留的候选数量。
+            min_exclusive_per_branch: 每条检索分支至少保留的独占结果数。
+
+        Returns:
+            处理结果。
+        """
         rrf_scores = {}
 
         #声明记录内容的字典  key是chunk_id  value是文档内容

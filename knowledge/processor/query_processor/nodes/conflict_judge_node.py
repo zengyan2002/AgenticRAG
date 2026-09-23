@@ -11,6 +11,7 @@ from knowledge.processor.query_processor.base import BaseNode
 from knowledge.processor.query_processor.nodes.rerank_node import RerankNode
 from knowledge.processor.query_processor.state import QueryGraphState
 from knowledge.utils.clients.ai_clients import AIClients
+from knowledge.utils.subquestion_retrieval_util import grouped_retrieval
 
 
 CONFLICT_JUDGE_SYSTEM_PROMPT = """你是科研知识库的证据仲裁器。
@@ -43,10 +44,20 @@ class ConflictJudgeNode(BaseNode):
     name = "conflict_judge_node"
 
     def process(self, state: QueryGraphState) -> QueryGraphState:
+        """执行 ConflictJudgeNode 的核心处理流程。
+
+        Args:
+            state: 当前工作流状态。
+
+        Returns:
+            处理结果。
+        """
         selected = [dict(doc) for doc in (state.get("reranked_docs") or [])]
         ranked = state.get("rerank_candidates") or []
         state["conflict_judge_triggered"] = False
         state["conflict_judge_decisions"] = []
+        if grouped_retrieval(state):
+            return state
 
         if (
             not self.config.conflict_judge_enabled
@@ -195,6 +206,16 @@ class ConflictJudgeNode(BaseNode):
         selected_ids: set[Any],
         cutoff: int,
     ) -> bool:
+        """判断conflictcandidate是否满足条件。
+
+        Args:
+            doc: 当前文档或检索结果。
+            selected_ids: 筛选后保留的文档标识集合。
+            cutoff: 结果筛选的分数阈值。
+
+        Returns:
+            条件成立时返回 ``True``，否则返回 ``False``。
+        """
         document_id = self._document_id(doc)
         rrf_rank = self._positive_rank(doc.get("rrf_rank"))
         bge_rank = self._positive_rank(doc.get("bge_rank"))
@@ -210,6 +231,18 @@ class ConflictJudgeNode(BaseNode):
         state: QueryGraphState,
         pairs: List[Dict[str, Any]],
     ) -> List[Dict[str, Any]]:
+        """调用模型判断候选证据对是否存在冲突。
+
+        Args:
+            state: 当前工作流状态。
+            pairs: 待判断是否冲突的证据对。
+
+        Returns:
+            处理结果。
+
+        Raises:
+            ValueError: 输入无效或处理过程无法继续时抛出。
+        """
         original_query = str(state.get("original_query") or "").strip()
         rewritten_query = str(
             state.get("rewritten_query") or original_query
@@ -255,11 +288,30 @@ class ConflictJudgeNode(BaseNode):
         return decisions
 
     def _document_text(self, doc: Dict[str, Any]) -> str:
+        """从检索结果中拼接可供模型判断的文档文本。
+
+        Args:
+            doc: 当前文档或检索结果。
+
+        Returns:
+            处理后的字符串。
+        """
         text = RerankNode._build_rerank_text(doc)
         return text[: self.config.conflict_judge_document_max_chars]
 
     @staticmethod
     def _parse_json_object(content: Any) -> Dict[str, Any]:
+        """解析JSON 数据object。
+
+        Args:
+            content: 待处理的文本内容。
+
+        Returns:
+            处理结果。
+
+        Raises:
+            ValueError: 输入无效或处理过程无法继续时抛出。
+        """
         if isinstance(content, dict):
             return content
         if not isinstance(content, str):
@@ -278,20 +330,52 @@ class ConflictJudgeNode(BaseNode):
 
     @staticmethod
     def _document_id(doc: Dict[str, Any]) -> Any:
+        """从检索结果中提取文档标识。
+
+        Args:
+            doc: 当前文档或检索结果。
+
+        Returns:
+            处理结果。
+        """
         chunk_id = doc.get("chunk_id")
         return chunk_id if chunk_id is not None else doc.get("id")
 
     @staticmethod
     def _positive_rank(value: Any) -> int:
+        """将有效的正整数排名转换为统一格式。
+
+        Args:
+            value: 待处理的输入值。
+
+        Returns:
+            处理结果。
+        """
         return value if isinstance(value, int) and value > 0 else 10 ** 9
 
     @staticmethod
     def _numeric_score(doc: Dict[str, Any]) -> float:
+        """将候选分数安全转换为浮点数。
+
+        Args:
+            doc: 当前文档或检索结果。
+
+        Returns:
+            处理结果。
+        """
         value = doc.get("score")
         return float(value) if isinstance(value, (int, float)) else float("-inf")
 
     @staticmethod
     def _confidence(value: Any) -> float:
+        """从候选结果中读取并规范化置信度。
+
+        Args:
+            value: 待处理的输入值。
+
+        Returns:
+            处理结果。
+        """
         try:
             return min(1.0, max(0.0, float(value)))
         except (TypeError, ValueError):

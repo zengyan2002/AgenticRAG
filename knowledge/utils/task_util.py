@@ -56,11 +56,28 @@ _NODE_NAME_TO_CN: Dict[str, str] = {
 
 def _to_cn(node_name: str) -> str:
     # 1. 从节点映射字典中获取中文名，若未配置则直接返回原英文名
+    """将任务状态转换为中文描述。
+
+    Args:
+        node_name: 当前节点名称。
+
+    Returns:
+        处理后的字符串。
+    """
     return _NODE_NAME_TO_CN.get(node_name, node_name)
 
 
 def add_running_task(task_id: str, node_name: str) -> None:
     # 1. 获取当前任务的运行节点列表（利用 defaultdict 自动初始化特性）
+    """添加running任务。
+
+    Args:
+        task_id: 异步任务唯一标识。
+        node_name: 当前节点名称。
+
+    Returns:
+        None。
+    """
     running = _tasks_running_list[task_id]
 
     # 2. 将当前节点加入运行列表（并做去重判断，防止重复添加）
@@ -70,6 +87,15 @@ def add_running_task(task_id: str, node_name: str) -> None:
 
 def add_done_task(task_id: str, node_name: str) -> None:
     # 1. 如果该节点还在运行列表中，则将其移出（表示该节点已结束运行）
+    """添加done任务。
+
+    Args:
+        task_id: 异步任务唯一标识。
+        node_name: 当前节点名称。
+
+    Returns:
+        None。
+    """
     if node_name in _tasks_running_list[task_id]:
         _tasks_running_list[task_id].remove(node_name)
 
@@ -83,11 +109,27 @@ def add_done_task(task_id: str, node_name: str) -> None:
 
 def get_running_task_list(task_id: str) -> List[str]:
     # 1. 获取指定任务运行中的节点列表，并通过列表推导式统一转换为中文展示名返回
+    """获取running任务列表。
+
+    Args:
+        task_id: 异步任务唯一标识。
+
+    Returns:
+        处理结果。
+    """
     return [_to_cn(n) for n in _tasks_running_list.get(task_id, [])]
 
 
 def get_done_task_list(task_id: str) -> List[str]:
     # 1. 获取指定任务已完成的节点列表，并通过列表推导式统一转换为中文展示名返回
+    """获取done任务列表。
+
+    Args:
+        task_id: 异步任务唯一标识。
+
+    Returns:
+        处理结果。
+    """
     return [_to_cn(n) for n in _tasks_done_list.get(task_id, [])]
 
 
@@ -103,6 +145,15 @@ def get_task_status(task_id: str) -> str:
 
 def update_task_status(task_id: str, status_name: str) -> None:
     # 1. 更新指定任务的总体运行状态（如 processing 等）
+    """更新任务状态。
+
+    Args:
+        task_id: 异步任务唯一标识。
+        status_name: 需要转换为中文的任务状态名称。
+
+    Returns:
+        None。
+    """
     _tasks_status[task_id] = status_name
 
 
@@ -140,6 +191,45 @@ def get_task_info(task_id: str) -> Dict[str, any]:
         "status": get_task_status(task_id),
         "running_list": get_running_task_list(task_id),
         "done_list": get_done_task_list(task_id),
-        "durations": get_node_durations(task_id)
+        "durations": get_node_durations(task_id),
+        "result": dict(_tasks_result.get(task_id, {})),
+    }
+
+
+def task_info_from_import_record(record: Dict[str, any]) -> Dict[str, any]:
+    """把 MongoDB 入库记录转换成任务状态接口需要的结构。
+
+    该函数用于服务重启后进程内状态已经丢失的场景。它只恢复持久化
+    的阶段级进度，不伪造一个当前正在执行的节点。
+    """
+    status = str(record.get("status") or "")
+    completed_nodes = [
+        str(node_name)
+        for node_name in (record.get("completed_nodes") or [])
+    ]
+    if "upload_file" not in completed_nodes:
+        completed_nodes.insert(0, "upload_file")
+    if status == TASK_STATUS_COMPLETED and "__end__" not in completed_nodes:
+        completed_nodes.append("__end__")
+
+    result = {}
+    for key in (
+        "source_hash",
+        "version_id",
+        "logical_document_id",
+        "doc_id",
+        "content_hash",
+        "error",
+    ):
+        value = record.get(key)
+        if value not in (None, ""):
+            result[key] = str(value)
+
+    return {
+        "status": status,
+        "running_list": [],
+        "done_list": [_to_cn(node_name) for node_name in completed_nodes],
+        "durations": {},
+        "result": result,
     }
 

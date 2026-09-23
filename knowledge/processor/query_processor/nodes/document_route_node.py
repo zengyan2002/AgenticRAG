@@ -30,6 +30,14 @@ class DocumentRouteNode(BaseNode):
     name = "document_route_node"
 
     def process(self, state: QueryGraphState) -> QueryGraphState:
+        """执行 DocumentRouteNode 的核心处理流程。
+
+        Args:
+            state: 当前工作流状态。
+
+        Returns:
+            处理结果。
+        """
         original_query = (
             state.get("retrieval_query")
             or state.get("original_query")
@@ -47,10 +55,14 @@ class DocumentRouteNode(BaseNode):
             )
         )
 
-        document_mentions, rewritten_query, retrieval_subqueries = self._understand_query(
-            original_query,
-            history_text,
-        )
+        (
+            document_mentions,
+            rewritten_query,
+            retrieval_subqueries,
+            needs_planning,
+        ) = self._understand_query(original_query, history_text)
+        # 每次覆盖，避免复用状态时沿用上一轮的模型判断。
+        state["query_needs_planning"] = needs_planning
         if not retrieval_subqueries:
             retrieval_subqueries = self._fallback_subqueries(
                 rewritten_query or original_query
@@ -181,7 +193,16 @@ class DocumentRouteNode(BaseNode):
             self,
             original_query: str,
             history_text: str,
-    ) -> Tuple[List[str], str, List[str]]:
+    ) -> Tuple[List[str], str, List[str], bool | None]:
+        """调用模型识别查询意图、文档指代和约束。
+
+        Args:
+            original_query: 用户输入的原始查询。
+            history_text: 拼接后的会话历史文本。
+
+        Returns:
+            文档指向、改写问题、子查询和规划判断；判断不可用时返回 None。
+        """
         fallback_mentions = self._deterministic_mentions(original_query)
         try:
             llm_client = AIClients.get_llm_client(
@@ -221,7 +242,22 @@ class DocumentRouteNode(BaseNode):
             elif isinstance(content, dict):
                 parsed = content
             else:
-                parsed = {}
+                raise ValueError("查询理解返回内容不是 JSON 对象")
+            if not isinstance(parsed, dict):
+                raise ValueError("查询理解返回内容不是 JSON 对象")
+            for field in ("document_mentions", "retrieval_subqueries"):
+                values = parsed.get(field, [])
+                if not isinstance(values, list) or any(
+                    not isinstance(value, str) for value in values
+                ):
+                    raise ValueError(f"查询理解字段 {field} 必须为字符串数组")
+            if not isinstance(parsed.get("rewritten_query", original_query), str):
+                raise ValueError("查询理解字段 rewritten_query 必须为字符串")
+            needs_planning = parsed.get("needs_planning")
+            if type(needs_planning) is not bool:
+                # 不用 bool(value)：字符串 "false" 会被错误转换成 True。
+                self.logger.warning("查询理解缺少有效的 needs_planning，复杂度判断回退规则")
+                needs_planning = None
             mentions = unique_strings(parsed.get("document_mentions") or [])
             rewritten_query = str(
                 parsed.get("rewritten_query") or original_query
@@ -230,16 +266,25 @@ class DocumentRouteNode(BaseNode):
                 parsed.get("retrieval_subqueries") or [],
                 max_items=3,
             )
-            return mentions, rewritten_query, subqueries
+            return mentions, rewritten_query, subqueries, needs_planning
         except Exception as exc:
             self.logger.warning("查询改写失败，使用原查询放行: %s", exc)
-            return fallback_mentions, original_query, []
+            return fallback_mentions, original_query, [], None
 
     @staticmethod
     def _retrieval_queries(
             rewritten_query: str,
             subqueries: List[str],
     ) -> List[str]:
+        """从查询计划中收集并去重检索语句。
+
+        Args:
+            rewritten_query: 经过补全和改写的查询文本。
+            subqueries: 用于多路召回的子查询列表。
+
+        Returns:
+            处理结果。
+        """
         return unique_strings(
             [rewritten_query, *(subqueries or [])],
             max_items=4,
@@ -278,11 +323,15 @@ class DocumentRouteNode(BaseNode):
             client = StorageClients.get_milvus()
             rows = client.query(
                 collection_name=self.config.document_registry_collection,
-                filter="",
+                filter=(
+                    "is_active == true"
+                    if self.config.active_version_filter_enabled else ""
+                ),
                 output_fields=[
                     "doc_id", "canonical_title", "primary_subject",
                     "aliases_json", "model_codes_json", "document_type",
                     "summary", "title_confidence", "requires_review",
+                    "logical_document_id", "version_id", "version_status",
                 ],
                 limit=self.config.document_registry_scan_limit,
             )
@@ -295,6 +344,14 @@ class DocumentRouteNode(BaseNode):
 
     @staticmethod
     def _registry_document(source: Any) -> Dict[str, Any]:
+        """将文档注册表记录转换为统一路由结构。
+
+        Args:
+            source: 当前文档指代的识别来源。
+
+        Returns:
+            处理结果。
+        """
         getter = source.get if hasattr(source, "get") else lambda _key: None
         return {
             "doc_id": getter("doc_id"),
@@ -306,6 +363,9 @@ class DocumentRouteNode(BaseNode):
             "summary": getter("summary"),
             "title_confidence": getter("title_confidence"),
             "requires_review": getter("requires_review"),
+            "logical_document_id": getter("logical_document_id"),
+            "version_id": getter("version_id"),
+            "version_status": getter("version_status"),
         }
 
     @classmethod
@@ -361,6 +421,14 @@ class DocumentRouteNode(BaseNode):
     def _logical_groups(
             documents: List[Dict[str, Any]],
     ) -> Dict[str, List[Dict[str, Any]]]:
+        """将文档指代整理为可执行的逻辑分组。
+
+        Args:
+            documents: 待处理的文档集合。
+
+        Returns:
+            处理结果。
+        """
         groups: Dict[str, List[Dict[str, Any]]] = {}
         for document in documents or []:
             key = normalize_document_name(document.get("canonical_title"))
@@ -374,6 +442,15 @@ class DocumentRouteNode(BaseNode):
             state: QueryGraphState,
             documents: List[Dict[str, Any]],
     ) -> None:
+        """写入必须限定文档范围的硬路由结果。
+
+        Args:
+            state: 当前工作流状态。
+            documents: 待处理的文档集合。
+
+        Returns:
+            None。
+        """
         selected = DocumentRouteNode._deduplicate_documents(documents)
         doc_ids = unique_strings(
             document.get("doc_id") for document in selected
@@ -394,6 +471,15 @@ class DocumentRouteNode(BaseNode):
             state: QueryGraphState,
             documents: List[Dict[str, Any]],
     ) -> None:
+        """写入允许全库回退的软路由结果。
+
+        Args:
+            state: 当前工作流状态。
+            documents: 待处理的文档集合。
+
+        Returns:
+            None。
+        """
         candidates = DocumentRouteNode._deduplicate_documents(documents)
         doc_ids = unique_strings(
             document.get("doc_id") for document in candidates
@@ -406,11 +492,27 @@ class DocumentRouteNode(BaseNode):
 
     @staticmethod
     def _deterministic_mentions(query: str) -> List[str]:
+        """通过规则识别查询中的明确文档指代。
+
+        Args:
+            query: 用户查询文本。
+
+        Returns:
+            处理结果。
+        """
         mentions = re.findall(r"《([^》]{2,100})》", query or "")
         mentions.extend(extract_model_codes(query))
         return unique_strings(mentions)
 
     def _search_registry(self, mention: str) -> List[Dict[str, Any]]:
+        """检索registry。
+
+        Args:
+            mention: 查询中识别出的文档指代。
+
+        Returns:
+            处理结果。
+        """
         try:
             embedding_client = AIClients.get_bge_m3_client()
             milvus_client = StorageClients.get_milvus()
@@ -427,6 +529,10 @@ class DocumentRouteNode(BaseNode):
             requests = create_hybrid_search_requests(
                 dense_vector=dense_vector,
                 sparse_vector=sparse_vector,
+                expr=(
+                    "is_active == true"
+                    if self.config.active_version_filter_enabled else None
+                ),
                 limit=self.config.document_route_limit,
             )
             response = execute_hybrid_search_query(
@@ -445,6 +551,9 @@ class DocumentRouteNode(BaseNode):
                     "summary",
                     "title_confidence",
                     "requires_review",
+                    "logical_document_id",
+                    "version_id",
+                    "version_status",
                 ],
             )
         except Exception as exc:
@@ -471,6 +580,9 @@ class DocumentRouteNode(BaseNode):
                 "summary": getter("summary"),
                 "title_confidence": getter("title_confidence"),
                 "requires_review": getter("requires_review"),
+                "logical_document_id": getter("logical_document_id"),
+                "version_id": getter("version_id"),
+                "version_status": getter("version_status"),
                 "route_score": float(distance) if isinstance(distance, (int, float)) else None,
             })
         return self._deduplicate_documents(documents)
@@ -482,6 +594,16 @@ class DocumentRouteNode(BaseNode):
             documents: List[Dict[str, Any]],
             original_query: str = "",
     ) -> List[Dict[str, Any]]:
+        """从文档注册表中查找标题或别名精确匹配项。
+
+        Args:
+            mention: 查询中识别出的文档指代。
+            documents: 待处理的文档集合。
+            original_query: 用户输入的原始查询。
+
+        Returns:
+            处理结果。
+        """
         mention_key = normalize_document_name(mention)
         alias_matches = []
         for document in documents:
@@ -538,6 +660,14 @@ class DocumentRouteNode(BaseNode):
 
     @staticmethod
     def _deduplicate_documents(documents) -> List[Dict[str, Any]]:
+        """按文档标识对候选文档去重。
+
+        Args:
+            documents: 待处理的文档集合。
+
+        Returns:
+            处理结果。
+        """
         result = []
         seen = set()
         for document in documents:
@@ -554,6 +684,14 @@ class DocumentRouteNode(BaseNode):
 
     @staticmethod
     def _format_history(history: List[Dict[str, Any]]) -> str:
+        """格式化历史记录。
+
+        Args:
+            history: 当前会话的历史消息。
+
+        Returns:
+            处理后的字符串。
+        """
         lines = []
         for message in reversed(history):
             if not isinstance(message, dict):
@@ -568,6 +706,15 @@ class DocumentRouteNode(BaseNode):
             query: str,
             history: List[Dict[str, Any]],
     ) -> List[Dict[str, Any]]:
+        """根据会话状态解析代词指向的活跃文档。
+
+        Args:
+            query: 用户查询文本。
+            history: 当前会话的历史消息。
+
+        Returns:
+            处理结果。
+        """
         if not re.search(r"(?:这篇|这份|这个|该文档|该论文|它)", query or ""):
             return []
         for message in history:

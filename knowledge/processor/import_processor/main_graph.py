@@ -71,6 +71,17 @@ from knowledge.processor.import_processor.state import ImportGraphState
 #定义路由函数
 def route_fun(state: ImportGraphState):
     #如果是md文件，则直接去
+    """根据当前状态选择fun。
+
+    Args:
+        state: 当前工作流状态。
+
+    Returns:
+        处理结果。
+
+    Raises:
+        ValueError: 输入无效或处理过程无法继续时抛出。
+    """
     if state.get("is_md_read_enabled"):
         return "md_image_node"
 
@@ -82,11 +93,45 @@ def route_fun(state: ImportGraphState):
 
     raise ValueError("The imported file type has not been identified.")
 
+
+def _resume_dispatch(state: ImportGraphState) -> ImportGraphState:
+    """断点恢复入口；实际目标节点由条件边决定。"""
+    return state
+
+
+def route_resume(state: ImportGraphState) -> str:
+    """根据最后完成节点跳转到下一节点。"""
+    completed = str(state.get("resume_after_node") or "").strip()
+    if not completed:
+        return "entry_node"
+    if completed == "entry_node":
+        return route_fun(state)
+    next_node = {
+        "word_to_pdf_node": "pdf_to_md_node",
+        "pdf_to_md_node": "md_image_node",
+        "md_image_node": "document_split_node",
+        "document_split_node": "document_identity_node",
+        "document_identity_node": "formula_semantic_node",
+        "formula_semantic_node": "bge_embedding_chunks_node",
+        "bge_embedding_chunks_node": "milvus_import_node",
+        "milvus_import_node": "document_registry_node",
+        "document_registry_node": END,
+    }.get(completed)
+    if next_node is None:
+        raise ValueError(f"不支持从节点 {completed} 恢复入库")
+    return next_node
+
 def create_import_graph():
     #1 创建StateGraph，传入状态结构类型
+    """创建import工作流图。
+
+    Returns:
+        处理结果。
+    """
     work_flow = StateGraph(ImportGraphState)
 
     #2 注册节点
+    work_flow.add_node("resume_dispatch_node", _resume_dispatch)
     work_flow.add_node("entry_node", EntryNode())
     work_flow.add_node("pdf_to_md_node", PdfToMdNode())
     work_flow.add_node("word_to_pdf_node", WordToPdfNode())
@@ -100,7 +145,27 @@ def create_import_graph():
 
 
     #3 添加边
-    work_flow.add_edge(START,"entry_node")
+    work_flow.add_edge(START,"resume_dispatch_node")
+    resumable_targets = {
+        node_name: node_name for node_name in (
+            "entry_node",
+            "word_to_pdf_node",
+            "pdf_to_md_node",
+            "md_image_node",
+            "document_split_node",
+            "document_identity_node",
+            "formula_semantic_node",
+            "bge_embedding_chunks_node",
+            "milvus_import_node",
+            "document_registry_node",
+        )
+    }
+    resumable_targets[END] = END
+    work_flow.add_conditional_edges(
+        "resume_dispatch_node",
+        route_resume,
+        resumable_targets,
+    )
     work_flow.add_conditional_edges(
         "entry_node",
         route_fun,

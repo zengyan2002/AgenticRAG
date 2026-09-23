@@ -68,7 +68,7 @@ class BaseNode(ABC):
         task_id = state.get('task_id')
 
         try:
-            
+
             self.logger.info(f"--- {self.name} 开始 ---")
 
             if task_id:

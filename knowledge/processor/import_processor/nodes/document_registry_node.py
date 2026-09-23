@@ -10,6 +10,17 @@ class DocumentRegistryNode(DocumentIdentityNode):
     name = "document_registry_node"
 
     def process(self, state: ImportGraphState) -> ImportGraphState:
+        """执行 DocumentRegistryNode 的核心处理流程。
+
+        Args:
+            state: 当前工作流状态。
+
+        Returns:
+            处理结果。
+
+        Raises:
+            ValueError: 输入无效或处理过程无法继续时抛出。
+        """
         identity = state.get("document_identity") or {}
         profile_text = str(identity.get("profile_text") or "").strip()
         if not identity.get("doc_id") or not profile_text:

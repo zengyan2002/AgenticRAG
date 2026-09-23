@@ -15,6 +15,17 @@ class ImageQueryNode(BaseNode):
     name = "image_query_node"
 
     def process(self, state: QueryGraphState) -> QueryGraphState:
+        """将查询图片转换为可用于知识库检索的文本描述。
+
+        Args:
+            state: 查询图状态，应包含图片字节及其 MIME 类型。
+
+        Returns:
+            写入图片语义描述和检索查询后的状态。
+
+        Raises:
+            ValueError: 视觉模型未返回有效描述时抛出。
+        """
         original_query = (state.get("original_query") or "").strip()
         image_bytes = state.get("query_image_bytes") or b""
 

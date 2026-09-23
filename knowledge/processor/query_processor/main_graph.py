@@ -30,6 +30,14 @@ RETRIEVAL_NODES = [
 
 # 路由函数
 def route_after_document_route(state: QueryGraphState) -> str | list[str]:
+    """根据当前状态选择after文档路由。
+
+    Args:
+        state: 当前工作流状态。
+
+    Returns:
+        处理结果。
+    """
     answer = state.get("answer") or ""
 
     if answer.strip():
@@ -38,18 +46,42 @@ def route_after_document_route(state: QueryGraphState) -> str | list[str]:
 
 
 def route_after_agent_router(state: QueryGraphState) -> str | list[str]:
+    """根据当前状态选择afteragent路由。
+
+    Args:
+        state: 当前工作流状态。
+
+    Returns:
+        处理结果。
+    """
     if state.get("agentic_active"):
         return "planner_node"
     return RETRIEVAL_NODES
 
 
 def route_after_conflict_judge(state: QueryGraphState) -> str:
+    """根据当前状态选择afterconflictjudge。
+
+    Args:
+        state: 当前工作流状态。
+
+    Returns:
+        处理后的字符串。
+    """
     if state.get("agentic_active"):
         return "evidence_evaluator_node"
     return "context_expansion_node"
 
 
 def route_after_evidence_evaluator(state: QueryGraphState) -> str:
+    """根据当前状态选择after证据evaluator。
+
+    Args:
+        state: 当前工作流状态。
+
+    Returns:
+        处理后的字符串。
+    """
     if state.get("answer"):
         return "answer_output_node"
     if state.get("agent_stop_reason"):
@@ -58,12 +90,31 @@ def route_after_evidence_evaluator(state: QueryGraphState) -> str:
 
 
 def route_after_replan(state: QueryGraphState) -> str | list[str]:
+    """根据当前状态选择afterreplan。
+
+    Args:
+        state: 当前工作流状态。
+
+    Returns:
+        处理结果。
+    """
     if state.get("agent_stop_reason"):
         return "context_expansion_node"
     return RETRIEVAL_NODES
 
 
 def route_after_query_type(state: QueryGraphState) -> str:
+    """根据当前状态选择after查询类型。
+
+    Args:
+        state: 当前工作流状态。
+
+    Returns:
+        处理后的字符串。
+
+    Raises:
+        ValueError: 输入无效或处理过程无法继续时抛出。
+    """
     query_type = state.get("query_type")
     if query_type == "text":
         return "document_route_node"

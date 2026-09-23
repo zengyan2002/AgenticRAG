@@ -5,6 +5,7 @@ from typing import Any, Dict, List
 from knowledge.processor.query_processor.base import BaseNode
 from knowledge.processor.query_processor.state import QueryGraphState
 from knowledge.utils.clients.ai_clients import AIClients
+from knowledge.utils.subquestion_retrieval_util import grouped_retrieval, merge_evidence_groups
 
 
 class RerankNode(BaseNode):
@@ -12,6 +13,16 @@ class RerankNode(BaseNode):
 
     def process(self, state: QueryGraphState) -> QueryGraphState:
         # 1. 获取可独立理解的查询。
+        """执行 RerankNode 的核心处理流程。
+
+        Args:
+            state: 当前工作流状态。
+
+        Returns:
+            处理结果。
+        """
+        if grouped_retrieval(state):
+            return self._rerank_subquestions(state)
         query = (
             state.get("rewritten_query")
             or state.get("original_query")
@@ -72,11 +83,78 @@ class RerankNode(BaseNode):
             )
         return state
 
+    def _rerank_subquestions(self, state):
+        """仅在同一子问题内排序；已完成的其它问题保留原证据。"""
+        questions = state["agent_plan"]["sub_questions"]
+        previous = state.get("subquestion_evidence") or {}
+        groups = {key: [dict(d) for d in docs] for key, docs in previous.items()}
+        candidates, specs, pairs = {}, [], []
+        new_pairs = []
+        for index in state.get("active_subquestion_indices") or []:
+            key = str(index)
+            old_ids = {str(d["chunk_id"]) for d in previous.get(key, [])}
+            # 当前 RRF 顺序优先，模型失败时也能保留本轮的新证据。
+            documents = {}
+            for doc in [*(state.get("subquestion_rrf_chunks") or {}).get(key, []), *previous.get(key, [])]:
+                if doc.get("chunk_id") is not None and str(doc.get("content") or "").strip():
+                    documents.setdefault(str(doc["chunk_id"]), {**doc, "source": "local"})
+            candidates[key] = list(documents.values())
+            for position, doc in enumerate(candidates[key]):
+                if str(doc["chunk_id"]) not in old_ids:
+                    new_pairs.append([index, str(doc["chunk_id"])])
+                resolved = (state.get("subquestion_resolved_questions") or {}).get(key)
+                query = questions[index] + (f"\n已解析的对象及条件：{resolved}" if resolved else "")
+                pairs.append((query, self._build_rerank_text(doc)))
+                specs.append((key, position))
+        scores = []
+        if pairs:
+            try:
+                client = AIClients.get_bge_reranker_client()
+                size = self.config.agent_rerank_batch_size
+                for start in range(0, len(pairs), size):
+                    batch = pairs[start:start + size]
+                    raw = client.compute_score(batch)
+                    raw = [raw] if isinstance(raw, (float, int)) else list(raw)
+                    if len(raw) != len(batch) or any(not math.isfinite(float(x)) for x in raw):
+                        raise ValueError("子问题重排分数数量或值不合法")
+                    scores.extend(float(self._score_normalize(x)) for x in raw)
+            except Exception as exc:
+                self.logger.warning("子问题重排失败，各组回退 RRF 顺序: %s", exc)
+                scores = [None] * len(pairs)
+        for (key, position), score in zip(specs, scores):
+            candidates[key][position].update(rerank_score=score, final_rerank_score=score,
+                                             rerank_subquestion_index=int(key))
+        for key, docs in candidates.items():
+            if scores and all(d.get("rerank_score") is not None for d in docs):
+                docs.sort(key=lambda d: d["rerank_score"], reverse=True)
+                docs = [d for d in docs if d["rerank_score"] >= self.config.rerank_coverage_min_score]
+            ranked = [{**doc, "bge_rank": rank} for rank, doc in enumerate(docs, 1)]
+            candidates[key] = ranked
+            groups[key] = ranked[:self.config.agent_subquestion_top_k]
+        state["subquestion_rerank_candidates"] = candidates
+        state["subquestion_evidence"] = groups
+        state["agent_new_evidence_pairs"] = new_pairs
+        state["agent_new_chunk_ids"] = list(dict.fromkeys(pair[1] for pair in new_pairs))
+        merged = merge_evidence_groups(groups, questions)
+        state["agent_evidence_pool"] = merged
+        state["reranked_docs"] = merged
+        state["rerank_candidates"] = []  # 不向全局仲裁器暴露不可跨问题比较的排名。
+        return state
+
     def _merge_agentic_candidates(
             self,
             state: QueryGraphState,
             current: List[Dict[str, Any]],
     ) -> List[Dict[str, Any]]:
+        """合并agenticcandidates。
+
+        Args:
+            state: 当前工作流状态。
+            current: 当前用于比较或合并的数据。
+
+        Returns:
+            处理结果。
+        """
         iteration = max(int(state.get("agent_iteration") or 1), 1)
         previous = state.get("agent_evidence_pool") or []
         previous_ids = {
@@ -129,6 +207,14 @@ class RerankNode(BaseNode):
 
     @staticmethod
     def _document_id(document: Dict[str, Any]) -> str:
+        """从检索结果中提取文档标识。
+
+        Args:
+            document: 待处理的文档数据。
+
+        Returns:
+            处理后的字符串。
+        """
         return str(
             document.get("chunk_id")
             or document.get("id")
@@ -157,6 +243,14 @@ class RerankNode(BaseNode):
 
     #分数归一化，传进来一个分数将其转换到0到1的范围
     def _score_normalize(self, score: float) -> float:
+        """将候选分数归一化到统一范围。
+
+        Args:
+            score: 当前候选结果的相关性分数。
+
+        Returns:
+            处理结果。
+        """
         return 1.0 / (1.0 + math.exp(-score))
 
 
@@ -167,6 +261,19 @@ class RerankNode(BaseNode):
             merge_docs: List[Dict[str, Any]],
             retrieval_queries: List[str] | None = None,
     ) -> List[Dict[str, Any]]:
+        """融合多路查询的文档重排结果。
+
+        Args:
+            query: 用户查询文本。
+            merge_docs: 待合并分数的文档结果。
+            retrieval_queries: 当前计划产生的检索查询列表。
+
+        Returns:
+            处理结果。
+
+        Raises:
+            RuntimeError: 输入无效或处理过程无法继续时抛出。
+        """
         if not query or not merge_docs:
             return []
 
@@ -299,6 +406,11 @@ class RerankNode(BaseNode):
             ]
 
     def _normalized_rerank_weights(self) -> tuple[float, float]:
+        """计算各查询对应的归一化重排权重。
+
+        Returns:
+            处理结果。
+        """
         full_weight = float(self.config.rerank_full_query_weight or 0.0)
         retrieval_weight = float(
             self.config.rerank_retrieval_query_weight or 0.0
@@ -310,6 +422,15 @@ class RerankNode(BaseNode):
 
     @staticmethod
     def _same_query(left: str, right: str) -> bool:
+        """判断两条查询文本是否一致。
+
+        Args:
+            left: 参与比较的左侧值。
+            right: 参与比较的右侧值。
+
+        Returns:
+            条件成立时返回 ``True``，否则返回 ``False``。
+        """
         normalize = lambda value: "".join(value.lower().split())
         return normalize(left) == normalize(right)
 
@@ -320,6 +441,16 @@ class RerankNode(BaseNode):
             full_query: str,
             retrieval_queries: List[str],
     ) -> List[tuple[str, str]]:
+        """生成针对单个文档的聚焦查询列表。
+
+        Args:
+            doc: 当前文档或检索结果。
+            full_query: 用于重排的完整查询文本。
+            retrieval_queries: 当前计划产生的检索查询列表。
+
+        Returns:
+            处理结果。
+        """
         focused: List[tuple[tuple[int, int, int], str, str]] = []
         seen: set[str] = set()
 
@@ -378,6 +509,15 @@ class RerankNode(BaseNode):
             doc: Dict[str, Any],
             query_name: str,
     ) -> bool:
+        """判断候选文档是否由指定查询召回。
+
+        Args:
+            doc: 当前文档或检索结果。
+            query_name: 当前检索查询的名称或来源。
+
+        Returns:
+            条件成立时返回 ``True``，否则返回 ``False``。
+        """
         subquery_ranks = doc.get("subquery_ranks") or {}
         if not isinstance(subquery_ranks, dict):
             return False
@@ -426,6 +566,17 @@ class RerankNode(BaseNode):
     def _truncate_at_score_cliff(self, reranked_docs_scores:List[Dict[str,Any]], rerank_min_top_k:int, rerank_max_top_k:int, rerank_gap_abs:float):
 
         #1 定义截取的上下边界
+        """在明显的分数断崖处截断重排结果。
+
+        Args:
+            reranked_docs_scores: 各查询对应的文档重排分数。
+            rerank_min_top_k: 重排后至少保留的结果数。
+            rerank_max_top_k: 重排后最多保留的结果数。
+            rerank_gap_abs: 触发分数断崖截断的绝对差值。
+
+        Returns:
+            处理结果。
+        """
         upper_bound = min(rerank_max_top_k, len(reranked_docs_scores))
         lower_bound = min(rerank_min_top_k ,upper_bound)
 
@@ -630,6 +781,18 @@ class RerankNode(BaseNode):
             sub_questions: List[str],
             candidates: List[Dict[str, Any]],
     ) -> List[List[float]]:
+        """计算候选结果对子问题的覆盖程度。
+
+        Args:
+            sub_questions: 由原始问题拆解出的子问题列表。
+            candidates: 候选检索结果列表。
+
+        Returns:
+            处理结果。
+
+        Raises:
+            RuntimeError: 输入无效或处理过程无法继续时抛出。
+        """
         try:
             matrix: List[List[float | None]] = [
                 [None] * len(sub_questions) for _ in candidates
@@ -681,6 +844,15 @@ class RerankNode(BaseNode):
             candidate: Dict[str, Any],
             query: str,
     ) -> float | None:
+        """复用同义查询已经计算的重排分数。
+
+        Args:
+            candidate: 当前候选检索结果。
+            query: 用户查询文本。
+
+        Returns:
+            处理结果。
+        """
         if cls._same_query(
                 str(candidate.get("rerank_full_query_text") or ""),
                 query,
@@ -706,5 +878,13 @@ class RerankNode(BaseNode):
 
     @staticmethod
     def _document_score(doc: Dict[str, Any]) -> float:
+        """从检索结果中读取文档相关性分数。
+
+        Args:
+            doc: 当前文档或检索结果。
+
+        Returns:
+            处理结果。
+        """
         score = doc.get("final_rerank_score", doc.get("score"))
         return float(score) if isinstance(score, (int, float)) else float("-inf")

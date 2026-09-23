@@ -78,6 +78,42 @@ def stable_document_hash(chunks: list[dict[str, Any]]) -> str:
     return digest.hexdigest()
 
 
+def stable_logical_document_id(
+        identity: dict[str, Any],
+        explicit_id: str = "",
+) -> tuple[str, str]:
+    """生成跨内容版本稳定的逻辑文档 ID。
+
+    用户显式传入的 ID 优先级最高；否则使用规范标题生成。显式 ID 会先
+    哈希，既避免把任意输入直接写入过滤表达式，也保证长度稳定。
+
+    Args:
+        identity: 已校验的文档身份信息。
+        explicit_id: 调用方为同一逻辑文档指定的稳定标识。
+
+    Returns:
+        ``(logical_document_id, source)``，source 用于说明 ID 的来源。
+    """
+    explicit = str(explicit_id or "").strip()
+    if explicit:
+        if re.fullmatch(r"ldoc_[0-9a-f]{24}", explicit):
+            return explicit, "user_provided"
+        seed = f"explicit:{explicit.casefold()}"
+        source = "user_provided"
+    else:
+        canonical_title = normalize_document_name(
+            identity.get("canonical_title")
+        )
+        if canonical_title:
+            seed = f"title:{canonical_title}"
+            source = "canonical_title"
+        else:
+            seed = f"content:{identity.get('content_hash') or ''}"
+            source = "content_hash_fallback"
+    digest = hashlib.sha256(seed.encode("utf-8")).hexdigest()[:24]
+    return f"ldoc_{digest}", source
+
+
 def build_document_profile_text(identity: dict[str, Any]) -> str:
     """构建文档注册表的稠密/稀疏向量文本。"""
     aliases = identity.get("aliases") or []
@@ -94,10 +130,12 @@ def build_document_profile_text(identity: dict[str, Any]) -> str:
 
 
 def build_chunk_retrieval_text(chunk: dict[str, Any]) -> str:
-    """构建Dense/Sparse/BM25共用的可检索文本。"""
+    """构建 Dense/Sparse/BM25 共用文本，不附加文档级研究对象。
+
+    文档可能涉及多个对象，切片的对象归属由正文和章节信息表达。
+    """
     fields = (
         ("文档", chunk.get("canonical_title") or chunk.get("file_title")),
-        ("研究对象", chunk.get("primary_subject") or chunk.get("theme_name")),
         ("章节路径", chunk.get("section_path")),
         ("父标题", chunk.get("parent_title")),
         ("切片标题", chunk.get("title")),

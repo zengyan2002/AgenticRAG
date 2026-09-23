@@ -26,6 +26,7 @@ from knowledge.utils.document_identity_util import (
     extract_model_codes,
     normalize_document_name,
     stable_document_hash,
+    stable_logical_document_id,
     unique_strings,
 )
 
@@ -36,6 +37,14 @@ class DocumentIdentityNode(BaseNode):
     name = "document_identity_node"
 
     def process(self, state: ImportGraphState) -> ImportGraphState:
+        """执行 DocumentIdentityNode 的核心处理流程。
+
+        Args:
+            state: 当前工作流状态。
+
+        Returns:
+            处理结果。
+        """
         file_title, chunks = self._valid_state(state)
         context, title_candidates = self._build_evidence_context(
             file_title,
@@ -61,8 +70,25 @@ class DocumentIdentityNode(BaseNode):
         )
 
         content_hash = stable_document_hash(chunks)
+        source_hash = str(state.get("source_hash") or "").strip()
+        version_id = str(state.get("version_id") or "").strip()
+        if not version_id:
+            version_id = f"ver_{(source_hash or content_hash)[:24]}"
         identity["content_hash"] = content_hash
-        identity["doc_id"] = f"doc_{content_hash[:24]}"
+        identity["source_hash"] = source_hash
+        identity["version_id"] = version_id
+        logical_document_id, logical_id_source = stable_logical_document_id(
+            identity,
+            str(state.get("logical_document_id") or ""),
+        )
+        version_doc_hash = hashlib.sha256(
+            f"{version_id}\x1f{content_hash}".encode("utf-8")
+        ).hexdigest()
+        identity["doc_id"] = f"doc_{version_doc_hash[:24]}"
+        identity["logical_document_id"] = logical_document_id
+        identity["logical_id_source"] = logical_id_source
+        identity["version_status"] = "building"
+        identity["is_active"] = False
         identity["profile_text"] = build_document_profile_text(identity)
 
         aliases_json = json.dumps(identity["aliases"], ensure_ascii=False)
@@ -88,6 +114,11 @@ class DocumentIdentityNode(BaseNode):
                 "document_summary": identity["summary"],
                 "aliases_json": aliases_json,
                 "model_codes_json": model_codes_json,
+                "source_hash": source_hash,
+                "version_id": version_id,
+                "logical_document_id": logical_document_id,
+                "version_status": "building",
+                "is_active": False,
                 # 旧节点与旧数据仍使用 theme_name，暂时保留兼容。
                 "theme_name": (
                     identity["primary_subject"]
@@ -100,6 +131,9 @@ class DocumentIdentityNode(BaseNode):
         state["doc_id"] = identity["doc_id"]
         state["canonical_title"] = identity["canonical_title"]
         state["primary_subject"] = identity["primary_subject"]
+        state["source_hash"] = source_hash
+        state["version_id"] = version_id
+        state["logical_document_id"] = logical_document_id
         state["theme_name"] = (
             identity["primary_subject"] or identity["canonical_title"]
         )
@@ -109,6 +143,15 @@ class DocumentIdentityNode(BaseNode):
 
     @staticmethod
     def _stable_section_id(doc_id: str, section_path: str) -> str:
+        """根据文档标题和章节路径生成稳定章节标识。
+
+        Args:
+            doc_id: 文档唯一标识。
+            section_path: 当前章节的完整层级路径。
+
+        Returns:
+            处理后的字符串。
+        """
         raw_value = f"{doc_id}\x1f{section_path}".encode("utf-8")
         return hashlib.sha256(raw_value).hexdigest()[:24]
 
@@ -116,6 +159,17 @@ class DocumentIdentityNode(BaseNode):
             self,
             state: ImportGraphState,
     ) -> Tuple[str, List[Dict[str, Any]]]:
+        """校验状态。
+
+        Args:
+            state: 当前工作流状态。
+
+        Returns:
+            处理结果。
+
+        Raises:
+            StateFieldError: 输入无效或处理过程无法继续时抛出。
+        """
         file_title = state.get("file_title")
         chunks = state.get("chunks")
         if not isinstance(file_title, str) or not file_title.strip():
@@ -139,6 +193,17 @@ class DocumentIdentityNode(BaseNode):
             max_chunks: int,
             max_chars: int,
     ) -> Tuple[str, List[str]]:
+        """构建证据上下文。
+
+        Args:
+            file_title: 文档标题。
+            chunks: 待处理的文档切片列表。
+            max_chunks: 最多选取的文档切片数量。
+            max_chars: 结果允许包含的最大字符数。
+
+        Returns:
+            处理结果。
+        """
         title_candidates = [file_title]
         context_parts = []
         used_chars = 0
@@ -173,6 +238,17 @@ class DocumentIdentityNode(BaseNode):
             title_candidates: List[str],
             user_title: str = "",
     ) -> Dict[str, Any]:
+        """构建回退结果身份信息。
+
+        Args:
+            file_title: 文档标题。
+            chunks: 待处理的文档切片列表。
+            title_candidates: 从文档中提取的标题候选列表。
+            user_title: 用户显式提供的文档标题。
+
+        Returns:
+            处理结果。
+        """
         cleaned_file_title = re.sub(r"[_\s]+", " ", file_title).strip()
         user_title = str(user_title or "").strip()
 
@@ -231,6 +307,16 @@ class DocumentIdentityNode(BaseNode):
             title_candidates: List[str],
             context: str,
     ) -> Dict[str, Any] | None:
+        """提取身份信息withllm。
+
+        Args:
+            file_title: 文档标题。
+            title_candidates: 从文档中提取的标题候选列表。
+            context: 与当前内容关联的上下文文本。
+
+        Returns:
+            处理结果。
+        """
         try:
             llm_client = AIClients.get_llm_client(response_format=True)
             response = llm_client.invoke([
@@ -265,6 +351,16 @@ class DocumentIdentityNode(BaseNode):
             fallback: Dict[str, Any],
             evidence_corpus: str,
     ) -> Dict[str, Any]:
+        """校验身份信息。
+
+        Args:
+            llm_identity: LLM 返回的文档身份信息。
+            fallback: 主流程不可用时采用的回退值。
+            evidence_corpus: 用于生成文档身份信息的证据文本。
+
+        Returns:
+            处理结果。
+        """
         if not isinstance(llm_identity, dict):
             return fallback
 
@@ -354,6 +450,14 @@ class DocumentIdentityNode(BaseNode):
 
     @staticmethod
     def _embed_profile(profile_text: str) -> Tuple[List[float], Dict[int, float]]:
+        """生成文档档案的稠密与稀疏向量。
+
+        Args:
+            profile_text: 用于生成文档档案向量的文本。
+
+        Returns:
+            处理结果。
+        """
         model = AIClients.get_bge_m3_client()
         result = model.encode([profile_text], return_dense=True, return_sparse=True)
         dense_vector = result["dense_vecs"][0].tolist()
@@ -369,6 +473,19 @@ class DocumentIdentityNode(BaseNode):
             dense_vector: List[float],
             sparse_vector: Dict[int, float],
     ) -> None:
+        """新增或更新 Milvus 中的文档档案。
+
+        Args:
+            identity: 标准化后的文档身份信息。
+            dense_vector: 语义检索使用的稠密向量。
+            sparse_vector: 词法检索使用的稀疏向量。
+
+        Returns:
+            None。
+
+        Raises:
+            MilvusError: 输入无效或处理过程无法继续时抛出。
+        """
         try:
             client = StorageClients.get_milvus()
             collection_name = self.config.document_registry_collection
@@ -380,7 +497,9 @@ class DocumentIdentityNode(BaseNode):
                 )
 
             data = {
+                # 主键
                 "doc_id": identity["doc_id"],
+                #
                 "canonical_title": identity["canonical_title"],
                 "primary_subject": identity["primary_subject"],
                 "aliases_json": json.dumps(identity["aliases"], ensure_ascii=False),
@@ -392,6 +511,12 @@ class DocumentIdentityNode(BaseNode):
                 "title_confidence": float(identity["title_confidence"]),
                 "requires_review": bool(identity["requires_review"]),
                 "content_hash": identity["content_hash"],
+                "source_hash": identity.get("source_hash", ""),
+                "version_id": identity.get("version_id", ""),
+                "logical_document_id": identity.get("logical_document_id", ""),
+                "logical_id_source": identity.get("logical_id_source", ""),
+                "version_status": identity.get("version_status", "building"),
+                "is_active": bool(identity.get("is_active", False)),
                 "dense_vector": dense_vector,
                 "sparse_vector": sparse_vector,
             }
@@ -404,6 +529,15 @@ class DocumentIdentityNode(BaseNode):
 
     @staticmethod
     def _build_schema(client: MilvusClient, dim: int):
+        """构建数据结构。
+
+        Args:
+            client: 用于执行当前操作的客户端。
+            dim: 向量维度。
+
+        Returns:
+            处理结果。
+        """
         schema = client.create_schema(enable_dynamic_field=True)
         schema.add_field(
             field_name="doc_id",
@@ -421,6 +555,11 @@ class DocumentIdentityNode(BaseNode):
             "profile_text",
             "title_source",
             "content_hash",
+            "source_hash",
+            "version_id",
+            "logical_document_id",
+            "logical_id_source",
+            "version_status",
         ):
             schema.add_field(
                 field_name=field_name,
@@ -429,6 +568,7 @@ class DocumentIdentityNode(BaseNode):
             )
         schema.add_field(field_name="title_confidence", datatype=DataType.FLOAT)
         schema.add_field(field_name="requires_review", datatype=DataType.BOOL)
+        schema.add_field(field_name="is_active", datatype=DataType.BOOL)
         schema.add_field(
             field_name="dense_vector",
             datatype=DataType.FLOAT_VECTOR,
@@ -442,6 +582,14 @@ class DocumentIdentityNode(BaseNode):
 
     @staticmethod
     def _build_index(client: MilvusClient):
+        """构建索引。
+
+        Args:
+            client: 用于执行当前操作的客户端。
+
+        Returns:
+            处理结果。
+        """
         index_params = client.prepare_index_params()
         index_params.add_index(
             index_name="dense_vector_index",
@@ -462,6 +610,15 @@ class DocumentIdentityNode(BaseNode):
             identity: Dict[str, Any],
             state: ImportGraphState,
     ) -> None:
+        """将文档身份识别结果备份到本地文件。
+
+        Args:
+            identity: 标准化后的文档身份信息。
+            state: 当前工作流状态。
+
+        Returns:
+            None。
+        """
         file_dir = state.get("file_dir")
         if not file_dir:
             return

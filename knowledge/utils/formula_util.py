@@ -244,6 +244,7 @@ class FormulaProcessor:
         current = ""
 
         def flush_current() -> None:
+            """将当前累计的非空内容写入结果并清空缓冲区。"""
             nonlocal current
             value = current.strip()
             if value:
@@ -251,6 +252,7 @@ class FormulaProcessor:
             current = ""
 
         def append_piece(piece: str, is_formula: bool = False) -> None:
+            """在长度约束下追加文本片段，并保证公式作为整体写入。"""
             nonlocal current
             if not piece:
                 return
@@ -279,6 +281,16 @@ class FormulaProcessor:
         chunk_size: int,
         separators: List[str] | None,
     ) -> List[str]:
+        """使用递归字符切分器拆分普通文本。
+
+        Args:
+            text: 待切分文本。
+            chunk_size: 单个切片的目标最大字符数。
+            separators: 分隔符优先级；为空时使用默认值。
+
+        Returns:
+            按原文顺序生成的文本切片列表。
+        """
         if not text or not text.strip():
             return []
         splitter = RecursiveCharacterTextSplitter(
@@ -293,6 +305,14 @@ class FormulaProcessor:
 
     @classmethod
     def _strip_delimiters(cls, raw: str) -> str:
+        """去除公式外围定界符并返回内部 LaTeX 内容。
+
+        Args:
+            raw: 包含 Markdown 或 LaTeX 定界符的原始公式。
+
+        Returns:
+            去除已知外围定界符后的 LaTeX 字符串。
+        """
         value = raw.strip()
         if value.startswith("$$") and value.endswith("$$"):
             return value[2:-2].strip()
@@ -306,6 +326,14 @@ class FormulaProcessor:
 
     @classmethod
     def _formula_keywords(cls, latex: str) -> str:
+        """根据 LaTeX 命令和变量符号生成确定性检索关键词。
+
+        Args:
+            latex: 去除外围定界符后的 LaTeX 内容。
+
+        Returns:
+            由中英文运算语义和变量符号组成的检索文本。
+        """
         commands = re.findall(r"\\([A-Za-z]+)", latex)
         command_keywords: List[str] = []
         for command in commands:

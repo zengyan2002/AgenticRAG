@@ -122,18 +122,37 @@ def execute_hybrid_search_query(milvus_client: MilvusClient,
 
 
 def _theme_names_filter(theme_names: List[str]) -> Tuple[str, Dict[str, Any]]:
+    """构造兼容旧主题字段的 Milvus 过滤表达式。
+
+    Args:
+        theme_names: 用于兼容旧数据的主题名称集合。
+
+    Returns:
+        处理结果。
+    """
     expr = "theme_name in {theme_names}"
     expr_params = {"theme_names": theme_names}
     return expr, expr_params
 
 
-def _doc_ids_filter(doc_ids: List[str]) -> Tuple[Optional[str], Optional[Dict[str, Any]]]:
-    """只有文档路由已唯一确认时才生成 Milvus 过滤表达式。"""
+def _doc_ids_filter(
+        doc_ids: List[str],
+        *,
+        active_only: bool = False,
+) -> Tuple[Optional[str], Optional[Dict[str, Any]]]:
+    """构造可选文档范围及活动版本过滤表达式。"""
     valid_doc_ids = [
         doc_id.strip()
         for doc_id in (doc_ids or [])
         if isinstance(doc_id, str) and doc_id.strip()
     ]
-    if not valid_doc_ids:
+    clauses = []
+    params: Dict[str, Any] = {}
+    if active_only:
+        clauses.append("is_active == true")
+    if valid_doc_ids:
+        clauses.append("doc_id in {doc_ids}")
+        params["doc_ids"] = valid_doc_ids
+    if not clauses:
         return None, None
-    return "doc_id in {doc_ids}", {"doc_ids": valid_doc_ids}
+    return " and ".join(clauses), params or None

@@ -270,6 +270,17 @@ class QueryConfig:
             "BM25_ENABLED", "false"
         ).lower() in ("true", "1", "yes")
     )
+    agent_subquestion_top_k: int = field(
+        default_factory=lambda: max(1, int(os.getenv("AGENT_SUBQUESTION_TOP_K", "3")))
+    )
+    agent_rerank_batch_size: int = field(
+        default_factory=lambda: max(1, int(os.getenv("AGENT_RERANK_BATCH_SIZE", "64")))
+    )
+    active_version_filter_enabled: bool = field(
+        default_factory=lambda: os.getenv(
+            "ACTIVE_VERSION_FILTER_ENABLED", "true"
+        ).lower() in ("true", "1", "yes")
+    )
     document_registry_collection: str = field(
         default_factory=lambda: (
             os.getenv("DOCUMENT_REGISTRY_COLLECTION")

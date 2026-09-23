@@ -1,6 +1,9 @@
 from knowledge.processor.query_processor.base import BaseNode
 from knowledge.processor.query_processor.exceptions import StateFieldError
 from knowledge.processor.query_processor.state import QueryGraphState
+from knowledge.utils.subquestion_retrieval_util import (
+    grouped_retrieval, run_grouped_branch, budgeted_retrieval_client, grouped_scope_locked,
+)
 from knowledge.utils.clients.ai_clients import AIClients
 from knowledge.utils.clients.storage_clients import StorageClients
 from knowledge.utils.milvus_util import (
@@ -18,7 +21,20 @@ from knowledge.utils.retrieval_result_util import (
 class VectorSearchNode(BaseNode):
     name = 'vector_search_node'
 
-    def process(self, state: QueryGraphState) -> dict[str, list]:
+    def process(self, state: QueryGraphState) -> dict:
+        if grouped_retrieval(state):
+            return run_grouped_branch(self, state, "vector", "embedding_chunks", self.config.embedding_search_limit)
+        return self._process_ungrouped(state)
+
+    def _process_ungrouped(self, state: QueryGraphState) -> dict:
+        """执行 VectorSearchNode 的核心处理流程。
+
+        Args:
+            state: 当前工作流状态。
+
+        Returns:
+            处理结果。
+        """
         if (
             state.get("agentic_active")
             and "vector" not in (state.get("agent_selected_tools") or [])
@@ -38,7 +54,7 @@ class VectorSearchNode(BaseNode):
 
         # 2.2 创建milvus客户端
         try:
-            milvus_client = StorageClients.get_milvus()
+            milvus_client = budgeted_retrieval_client(StorageClients.get_milvus())
         except ConnectionError as e:
             self.logger.error(f"Failed to connect to Milvus. Reason: {e}")
             return {"embedding_chunks": []}
@@ -93,10 +109,33 @@ class VectorSearchNode(BaseNode):
             hard_filter_doc_ids,
             soft_filter_doc_ids,
     ):
+        """检索单条数据查询。
+
+        Args:
+            milvus_client: Milvus 客户端。
+            dense_vector: 语义检索使用的稠密向量。
+            sparse_vector: 词法检索使用的稀疏向量。
+            hard_filter_doc_ids: 必须命中的文档标识集合。
+            soft_filter_doc_ids: 优先检索但允许回退的文档标识集合。
+
+        Returns:
+            处理结果。
+        """
         limit = self.config.embedding_search_limit
 
         def search(doc_ids=None):
-            expr, expr_params = _doc_ids_filter(doc_ids or [])
+            """检索数据。
+
+            Args:
+                doc_ids: 允许检索的文档标识集合。
+
+            Returns:
+                处理结果。
+            """
+            expr, expr_params = _doc_ids_filter(
+                doc_ids or [],
+                active_only=self.config.active_version_filter_enabled,
+            )
             requests = create_hybrid_search_requests(
                 dense_vector=dense_vector,
                 sparse_vector=sparse_vector,
@@ -119,7 +158,7 @@ class VectorSearchNode(BaseNode):
 
         if hard_filter_doc_ids:
             filtered = search(hard_filter_doc_ids)
-            if filtered:
+            if filtered or grouped_scope_locked():
                 return filtered, False
             self.logger.warning("doc_id精确范围内无结果，自动回退全库原问题检索")
             return search(), True
@@ -139,6 +178,17 @@ class VectorSearchNode(BaseNode):
     def _valid_state(self, state: QueryGraphState):
 
         # 获取theme_names和rewritten_query字段
+        """校验状态。
+
+        Args:
+            state: 当前工作流状态。
+
+        Returns:
+            处理结果。
+
+        Raises:
+            StateFieldError: 输入无效或处理过程无法继续时抛出。
+        """
         hard_filter_doc_ids = state.get("hard_filter_doc_ids") or []
         soft_filter_doc_ids = state.get("soft_filter_doc_ids") or []
         rewritten_query = state.get("rewritten_query", "")

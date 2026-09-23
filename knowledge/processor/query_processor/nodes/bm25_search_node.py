@@ -2,6 +2,9 @@
 
 from knowledge.processor.query_processor.base import BaseNode
 from knowledge.processor.query_processor.state import QueryGraphState
+from knowledge.utils.subquestion_retrieval_util import (
+    grouped_retrieval, run_grouped_branch, budgeted_retrieval_client, grouped_scope_locked,
+)
 from knowledge.utils.clients.storage_clients import StorageClients
 from knowledge.utils.milvus_util import _doc_ids_filter
 from knowledge.utils.retrieval_result_util import (
@@ -14,7 +17,20 @@ from knowledge.utils.retrieval_result_util import (
 class BM25SearchNode(BaseNode):
     name = "bm25_search_node"
 
-    def process(self, state: QueryGraphState) -> dict[str, list | bool]:
+    def process(self, state: QueryGraphState) -> dict:
+        if grouped_retrieval(state):
+            return run_grouped_branch(self, state, "bm25", "bm25_chunks", self.config.bm25_search_limit)
+        return self._process_ungrouped(state)
+
+    def _process_ungrouped(self, state: QueryGraphState) -> dict:
+        """执行 BM25SearchNode 的核心处理流程。
+
+        Args:
+            state: 当前工作流状态。
+
+        Returns:
+            处理结果。
+        """
         if (
             state.get("agentic_active")
             and "bm25" not in (state.get("agent_selected_tools") or [])
@@ -32,7 +48,7 @@ class BM25SearchNode(BaseNode):
         hard_ids = state.get("hard_filter_doc_ids") or []
         soft_ids = state.get("soft_filter_doc_ids") or []
         try:
-            client = StorageClients.get_milvus()
+            client = budgeted_retrieval_client(StorageClients.get_milvus())
             query_results = []
             route_fallback = False
             for index, query in enumerate(queries):
@@ -58,10 +74,32 @@ class BM25SearchNode(BaseNode):
             return {"bm25_chunks": [], "bm25_route_fallback": False}
 
     def _search_one(self, client, query, hard_ids, soft_ids):
+        """检索单条数据。
+
+        Args:
+            client: 用于执行当前操作的客户端。
+            query: 用户查询文本。
+            hard_ids: 硬过滤使用的文档标识集合。
+            soft_ids: 软过滤使用的文档标识集合。
+
+        Returns:
+            处理结果。
+        """
         limit = self.config.bm25_search_limit
 
         def search(doc_ids=None):
-            expr, expr_params = _doc_ids_filter(doc_ids or [])
+            """检索数据。
+
+            Args:
+                doc_ids: 允许检索的文档标识集合。
+
+            Returns:
+                处理结果。
+            """
+            expr, expr_params = _doc_ids_filter(
+                doc_ids or [],
+                active_only=self.config.active_version_filter_enabled,
+            )
             response = client.search(
                 collection_name=self.config.bm25_collection,
                 data=[query],
@@ -76,7 +114,7 @@ class BM25SearchNode(BaseNode):
 
         if hard_ids:
             filtered = search(hard_ids)
-            if filtered:
+            if filtered or grouped_scope_locked():
                 return filtered, False
             self.logger.warning("doc_id精确范围内无BM25结果，自动回退全库")
             return search(), True

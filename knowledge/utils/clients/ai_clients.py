@@ -32,10 +32,23 @@ class AIClients(BaseClientManager):
 
     @classmethod
     def get_vlm_client(cls) -> OpenAI:
+        """获取vlm客户端。
+
+        Returns:
+            处理结果。
+        """
         return cls._get_or_create("_openai_client", cls._openai_lock, cls._create_vlm_client)
 
     @classmethod
     def _create_vlm_client(cls) -> OpenAI:
+        """创建vlm客户端。
+
+        Returns:
+            处理结果。
+
+        Raises:
+            ConnectionError: 输入无效或处理过程无法继续时抛出。
+        """
         try:
             settings = get_settings()
             base_url, api_key = settings.require(
@@ -92,6 +105,20 @@ class AIClients(BaseClientManager):
         role: str = "default",
         thinking: Optional[str] = None,
     ) -> ChatOpenAI:
+        """创建llm客户端。
+
+        Args:
+            response_format: 模型响应应遵循的结构格式。
+            role: 消息在对话中的角色。
+            thinking: 是否启用模型的思考模式。
+
+        Returns:
+            处理结果。
+
+        Raises:
+            EnvironmentError: 输入无效或处理过程无法继续时抛出。
+            ConnectionError: 输入无效或处理过程无法继续时抛出。
+        """
         try:
             settings = get_settings()
             base_url, api_key = settings.require(
@@ -176,6 +203,11 @@ class AIClients(BaseClientManager):
     # ── BGE-M3嵌入模型客户端 ──
     @classmethod
     def get_bge_m3_client(cls) -> BGEM3FlagModel:
+        """获取bgem3客户端。
+
+        Returns:
+            处理结果。
+        """
         return cls._get_or_create("_bge_m3_client", cls._bge_m3_lock, cls._create_bge_m3_client)
 
     @classmethod
@@ -190,12 +222,16 @@ class AIClients(BaseClientManager):
             model_name = settings.require("bge_m3_path")[0]
             device = settings.bge_device
             fp16 = settings.bge_fp16 and not device.lower().startswith("cpu")
+            cls._validate_bge_device(device)
             # 2. 创建
             bge_m3_ef = BGEM3FlagModel(
                 model_name_or_path=model_name,
                 devices=device,
-                use_fp16=fp16
+                use_fp16=fp16,
+                batch_size=settings.bge_batch_size,
             )
+            logger.info("BGE-M3 初始化成功 (device=%s, fp16=%s, batch_size=%s)",
+                        device, fp16, settings.bge_batch_size)
             return bge_m3_ef
         except EnvironmentError as e:
             raise
@@ -220,6 +256,7 @@ class AIClients(BaseClientManager):
             settings = get_settings()
             model_path = settings.require("bge_reranker_path")[0]
             device = settings.bge_reranker_device
+            cls._validate_bge_device(device)
 
             if not Path(model_path).is_dir():
                 raise EnvironmentError(f"BGE重排模型目录不存在: {model_path}")
@@ -234,12 +271,14 @@ class AIClients(BaseClientManager):
                 model_name_or_path=model_path,
                 devices=device,
                 use_fp16=use_fp16,
+                batch_size=settings.bge_reranker_batch_size,
                 max_length=512,
             )
 
             logger.info(
                 "BGE重排模型初始化成功 "
-                f"(path={model_path}, device={device}, fp16={use_fp16})"
+                f"(path={model_path}, device={device}, fp16={use_fp16}, "
+                f"batch_size={settings.bge_reranker_batch_size})"
             )
             return reranker
 
@@ -248,3 +287,18 @@ class AIClients(BaseClientManager):
         except Exception as e:
             logger.error(f"BGE重排模型初始化失败: {e}")
             raise ConnectionError(f"BGE重排模型初始化失败: {e}") from e
+
+    @staticmethod
+    def _validate_bge_device(device: str) -> None:
+        """CUDA 配置无效时明确报错，避免误以为已启用 GPU。"""
+        if device.lower().startswith("cuda"):
+            import torch
+
+            if not torch.cuda.is_available():
+                raise EnvironmentError(
+                    f"BGE 配置为 {device}，但当前 PyTorch ({torch.__version__}) 无法使用 CUDA。"
+                    "请在运行后端的 Python 环境安装 CUDA 版 PyTorch 并检查 NVIDIA 驱动。"
+                )
+            index = torch.device(device).index or 0
+            if index >= torch.cuda.device_count():
+                raise EnvironmentError(f"BGE 配置的 GPU 不存在：{device}")

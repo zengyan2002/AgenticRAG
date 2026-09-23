@@ -65,6 +65,15 @@ def save_chat_message(
 
 
 def get_recent_messages(session_id: str, limit: int = 10) -> List[Dict[str, Any]]:
+    """获取最近数据messages。
+
+    Args:
+        session_id: 会话唯一标识。
+        limit: 允许处理或返回的最大数量。
+
+    Returns:
+        处理结果。
+    """
     try:
         cursor = (
             _get_collection()
@@ -79,6 +88,14 @@ def get_recent_messages(session_id: str, limit: int = 10) -> List[Dict[str, Any]
 
 
 def clear_history(session_id: str) -> int:
+    """清理历史记录。
+
+    Args:
+        session_id: 会话唯一标识。
+
+    Returns:
+        处理结果。
+    """
     try:
         result = _get_collection().delete_many({"session_id": session_id})
         logger.info(f"Deleted {result.deleted_count} messages for session {session_id}")

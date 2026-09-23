@@ -40,11 +40,29 @@ class ImageInfo:
 class _MdFileHandler:
 
     def __init__(self,logger:logging.Logger,node_name:str):
+        """初始化 _MdFileHandler 实例及其依赖。
+
+        Args:
+            logger: 用于记录运行信息的日志器。
+            node_name: 当前节点名称。
+        """
         self.logger = logger
         self.node_name = node_name
 
     def read_md(self, md_path:str)-> Tuple[str,Path,Path]:
         #1 判断md_path是否为空
+        """读取并返回 Markdown 文件内容。
+
+        Args:
+            md_path: Markdown 文件路径。
+
+        Returns:
+            处理结果。
+
+        Raises:
+            StateFieldError: 输入无效或处理过程无法继续时抛出。
+            FileProcessingError: 输入无效或处理过程无法继续时抛出。
+        """
         if not md_path:
             self.logger.error(f"md_path is empty")
             raise StateFieldError(node_name=self.node_name,field_name="md_path",expected_type=str)
@@ -68,6 +86,15 @@ class _MdFileHandler:
      # 备份md文件
     def _backup(self, md_path_obj: Path, new_md_content: str) -> str:
         # 1. 新文件的路径
+        """将图片处理结果备份到本地文件。
+
+        Args:
+            md_path_obj: Markdown 文件的 Path 对象。
+            new_md_content: 替换图片引用后的 Markdown 正文。
+
+        Returns:
+            处理后的字符串。
+        """
         backup_md_path = md_path_obj.with_name(md_path_obj.stem + "_backup" + md_path_obj.suffix)
         # 2. 将新的md内容写入新的文件中
         try:
@@ -82,11 +109,27 @@ class _MdFileHandler:
 #用来提取图片信息，包含提取上下文
 class _ImageScanner:
     def __init__(self, logger: logging.Logger, node_name: str, config: Optional[ImportConfig] = None):
+        """初始化 _ImageScanner 实例及其依赖。
+
+        Args:
+            logger: 用于记录运行信息的日志器。
+            node_name: 当前节点名称。
+            config: 当前流程配置。
+        """
         self.logger = logger
         self.node_name = node_name
         self.config = config or get_config()
 
     def scan_image_dir(self,md_content:str,image_dir_obj:Path) ->List[ImageInfo]:
+        """扫描 MinerU 输出目录并收集图片文件。
+
+        Args:
+            md_content: 待处理的 Markdown 正文。
+            image_dir_obj: MinerU 图片输出目录的 Path 对象。
+
+        Returns:
+            处理结果。
+        """
         image_info_list = []
         for image_file in image_dir_obj.iterdir():
             #1 过滤子目录
@@ -155,6 +198,17 @@ class _ImageScanner:
     #查找图片上文的方法
     def find_above_context(self,index:int,title_pattern:re.Pattern,code_block_pattern:re.Pattern,md_content_lines:List[str] ) -> Tuple[str,List[str]]:
         #上文的起始位置
+        """查找above上下文。
+
+        Args:
+            index: 当前元素或切片索引。
+            title_pattern: 用于识别 Markdown 标题的正则表达式。
+            code_block_pattern: 用于识别 Markdown 代码块的正则表达式。
+            md_content_lines: 按行拆分后的 Markdown 正文。
+
+        Returns:
+            处理结果。
+        """
         above_context_start_index = -1
         #上文的标题
         above_title = ""
@@ -181,6 +235,17 @@ class _ImageScanner:
 
     def find_following_context(self,index:int,title_pattern:re.Pattern,code_block_pattern:re.Pattern,md_content_lines:List[str] ) -> List[str]:
         # 默认下文一直取到文档结尾
+        """查找following上下文。
+
+        Args:
+            index: 当前元素或切片索引。
+            title_pattern: 用于识别 Markdown 标题的正则表达式。
+            code_block_pattern: 用于识别 Markdown 代码块的正则表达式。
+            md_content_lines: 按行拆分后的 Markdown 正文。
+
+        Returns:
+            处理结果。
+        """
         following_context_end_index = len(md_content_lines)
 
         # 排除代码块里的标题干扰
@@ -206,6 +271,16 @@ class _ImageScanner:
     #按照要求截取上下文内容
     def extract_contextual_content(self,context:List[str],img_content_length:int,is_above_context:bool) -> str:
         #段落列表
+        """提取contextual内容。
+
+        Args:
+            context: 与当前内容关联的上下文文本。
+            img_content_length: 截取图片上下文时允许的最大字符数。
+            is_above_context: 是否提取图片上方的上下文。
+
+        Returns:
+            处理后的字符串。
+        """
         paragraph_list = []
 
         #当前正在收集的段落列表
@@ -258,11 +333,27 @@ class _ImageScanner:
 #利用VLM模型去生成图片的描述信息
 class _VlmSummarizer:
     def __init__(self, logger: logging.Logger, node_name: str, config: Optional[ImportConfig] = None):
+        """初始化 _VlmSummarizer 实例及其依赖。
+
+        Args:
+            logger: 用于记录运行信息的日志器。
+            node_name: 当前节点名称。
+            config: 当前流程配置。
+        """
         self.logger = logger
         self.node_name = node_name
         self.config = config or get_config()
 
     def summarize_all(self,image_info_list:List[ImageInfo],file_title)->dict[str, str]:
+        """并发生成全部图片的语义摘要。
+
+        Args:
+            image_info_list: 待处理图片及其上下文信息列表。
+            file_title: 文档标题。
+
+        Returns:
+            处理结果。
+        """
         image_summaries = {}
         #1 创建vlm对象
         try:
@@ -284,6 +375,16 @@ class _VlmSummarizer:
     # 给单个图片生成描述信息
     def _summarize_single(self,file_title:str,image_info:ImageInfo,vlm_client:OpenAI) -> str:
         #1 组装最后给大模型的关于图片的上下文文本信息
+        """调用 VLM 为单张图片生成语义摘要。
+
+        Args:
+            file_title: 文档标题。
+            image_info: 当前图片的路径及上下文信息。
+            vlm_client: 用于理解图片内容的视觉语言模型客户端。
+
+        Returns:
+            处理后的字符串。
+        """
         context_content = '\n'.join([image_info.image_context.above_title,image_info.image_context.above_context_content,image_info.image_context.following_context_content])
 
         #2 读取图片，先将本地图片读取成二进制，利用base64将其编码成字符串
@@ -340,25 +441,68 @@ class _VlmSummarizer:
 #上传图片到MinIO并替换md文件中的内容
 class _ImageUploader:
     def __init__(self, logger: logging.Logger, node_name: str, config: Optional[ImportConfig] = None):
+        """初始化 _ImageUploader 实例及其依赖。
+
+        Args:
+            logger: 用于记录运行信息的日志器。
+            node_name: 当前节点名称。
+            config: 当前流程配置。
+        """
         self.logger = logger
         self.node_name = node_name
         self.config = config or get_config()
+        self.last_uploaded_objects: list[str] = []
 
     #上传图片到minio，并且替换掉md文件中的图片链接
-    def upload_and_replace_content(self,image_info_list:List[ImageInfo],md_path_obj:Path,image_summaries:Dict[str,str])->str:
+    def upload_and_replace_content(
+            self,
+            image_info_list: List[ImageInfo],
+            md_path_obj: Path,
+            image_summaries: Dict[str, str],
+            version_id: str = "",
+    ) -> str:
         #1 将图片上传到minio  并返回图片存储的url
-        image_urls = self.upload_image_to_minio(image_info_list,md_path_obj)
+        """上传andreplace内容。
+
+        Args:
+            image_info_list: 待处理图片及其上下文信息列表。
+            md_path_obj: Markdown 文件的 Path 对象。
+            image_summaries: VLM 生成的图片语义摘要列表。
+
+        Returns:
+            处理后的字符串。
+        """
+        image_urls = self.upload_image_to_minio(
+            image_info_list,
+            md_path_obj,
+            version_id=version_id,
+        )
 
         #2 替换md文件中图片的链接以及摘要
         new_md_content = self.replace_content_in_md(md_path_obj,image_urls,image_summaries)
 
         return new_md_content
-        
+
 
     # 上传图片到minio
-    def upload_image_to_minio(self, image_info_list:List[ImageInfo],md_path_obj:Path):
+    def upload_image_to_minio(
+            self,
+            image_info_list: List[ImageInfo],
+            md_path_obj: Path,
+            version_id: str = "",
+    ):
         #字典，key是图片的名称，value是图片的url
+        """上传图片toMinIO 数据。
+
+        Args:
+            image_info_list: 待处理图片及其上下文信息列表。
+            md_path_obj: Markdown 文件的 Path 对象。
+
+        Returns:
+            处理结果。
+        """
         image_urls = {}
+        self.last_uploaded_objects = []
         #1 创建minio客户端
         try:
             minio_client = StorageClients.get_minio()
@@ -374,11 +518,17 @@ class _ImageUploader:
         bucket_name = self.config.minio_bucket
         minio_base_url = self.config.get_minio_base_url()
         for image_info in image_info_list:
-            destination_file = f"{md_path_obj.stem}/{image_info.image_name}"
+            destination_file = (
+                f"document_versions/{version_id}/images/"
+                f"{md_path_obj.stem}/{image_info.image_name}"
+                if version_id
+                else f"{md_path_obj.stem}/{image_info.image_name}"
+            )
             minio_client.fput_object(
                 bucket_name, destination_file, image_info.image_path,
             )
             image_urls[image_info.image_name] = f"{minio_base_url}/{bucket_name}/{destination_file}"
+            self.last_uploaded_objects.append(destination_file)
 
         return image_urls
 
@@ -390,6 +540,16 @@ class _ImageUploader:
             image_summaries: Dict[str, str]
     )->str:
         # 匹配 Markdown 图片语法
+        """替换内容inmd。
+
+        Args:
+            md_path_obj: Markdown 文件的 Path 对象。
+            image_urls: 已上传图片的对象存储地址列表。
+            image_summaries: VLM 生成的图片语义摘要列表。
+
+        Returns:
+            处理后的字符串。
+        """
         image_pattern = re.compile(r"!\[(.*?)\]\((.*?)\)")
 
         # 匹配代码块开始/结束
@@ -401,6 +561,14 @@ class _ImageUploader:
         new_lines = []
 
         def replacer(match: re.Match):
+            """将 Markdown 图片引用替换为语义增强后的引用。
+
+            Args:
+                match: 正则表达式的当前匹配结果。
+
+            Returns:
+                处理结果。
+            """
             old_alt = match.group(1)
             old_url = match.group(2)
 
@@ -438,6 +606,8 @@ class MdImageNode(BaseNode):
     name = "md_image_node"
 
     def __init__(self):
+        """初始化 MdImageNode 实例及其依赖。
+        """
         super().__init__()
         self.md_file_handler = _MdFileHandler(logger=self.logger,node_name=self.name)
         self.image_scanner = _ImageScanner(logger=self.logger, node_name=self.name,config=self.config)
@@ -446,6 +616,14 @@ class MdImageNode(BaseNode):
 
     def process(self, state:ImportGraphState ) -> ImportGraphState:
         #1 读取md文件的内容到内存
+        """执行 MdImageNode 的核心处理流程。
+
+        Args:
+            state: 当前工作流状态。
+
+        Returns:
+            处理结果。
+        """
         (md_content,md_path_obj,image_dir_obj)=self.md_file_handler.read_md(state["md_path"])
 
         #2 处理图片信息，包含图片的名称、在md文件中的上下文
@@ -455,7 +633,12 @@ class MdImageNode(BaseNode):
         image_summaries = self.vlm_summarize.summarize_all(image_info_list, state["file_title"])
 
         #4 将图片上传给Minio，并且替换掉原来md文件中的部分内容
-        new_md_content = self.image_uploader.upload_and_replace_content(image_info_list,md_path_obj,image_summaries)
+        new_md_content = self.image_uploader.upload_and_replace_content(
+            image_info_list,
+            md_path_obj,
+            image_summaries,
+            version_id=str(state.get("version_id") or ""),
+        )
 
         # 仅在显式调试模式下备份处理后的 Markdown。
         if get_settings().import_debug_artifacts:
@@ -463,5 +646,9 @@ class MdImageNode(BaseNode):
 
         #6 更新状态中的md_content
         state["md_content"] = new_md_content
+        state["resource_objects"] = list(dict.fromkeys([
+            *(state.get("resource_objects") or []),
+            *self.image_uploader.last_uploaded_objects,
+        ]))
 
         return state

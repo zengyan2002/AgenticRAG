@@ -24,6 +24,17 @@ class _MilvusSchemaBuilder:
             analyzer_type: str = "chinese",
     ):
         #1 创建一个schema
+        """构建数据结构。
+
+        Args:
+            client: 用于执行当前操作的客户端。
+            dim: 向量维度。
+            enable_bm25: 是否启用 Milvus BM25 稀疏检索。
+            analyzer_type: Milvus 稀疏检索使用的分词器类型。
+
+        Returns:
+            处理结果。
+        """
         schema = client.create_schema(enable_dynamic_field=True)
 
         #2 添加字段
@@ -31,7 +42,8 @@ class _MilvusSchemaBuilder:
         schema.add_field(
             field_name="id",
             datatype=DataType.INT64,
-            auto_id=not enable_bm25,
+            # 稳定主键使普通混合检索和 BM25 两种模式都能安全 upsert。
+            auto_id=False,
             is_primary=True
         )
         schema.add_field(
@@ -63,6 +75,30 @@ class _MilvusSchemaBuilder:
             field_name="doc_id",
             datatype=DataType.VARCHAR,
             max_length=64,
+        )
+        schema.add_field(
+            field_name="source_hash",
+            datatype=DataType.VARCHAR,
+            max_length=64,
+        )
+        schema.add_field(
+            field_name="version_id",
+            datatype=DataType.VARCHAR,
+            max_length=64,
+        )
+        schema.add_field(
+            field_name="logical_document_id",
+            datatype=DataType.VARCHAR,
+            max_length=64,
+        )
+        schema.add_field(
+            field_name="version_status",
+            datatype=DataType.VARCHAR,
+            max_length=32,
+        )
+        schema.add_field(
+            field_name="is_active",
+            datatype=DataType.BOOL,
         )
         schema.add_field(
             field_name="canonical_title",
@@ -150,6 +186,15 @@ class _MilvusSchemaBuilder:
 class _MilvusIndexBuilder:
     @classmethod
     def build_index(cls, client: MilvusClient, enable_bm25: bool = False):
+        """构建索引。
+
+        Args:
+            client: 用于执行当前操作的客户端。
+            enable_bm25: 是否启用 Milvus BM25 稀疏检索。
+
+        Returns:
+            处理结果。
+        """
         index_params = client.prepare_index_params()
         index_params.add_index(
             index_name="dense_vector_index",
@@ -178,6 +223,14 @@ class MilvusImportNode(BaseNode):
     def process(self, state: ImportGraphState) -> ImportGraphState:
 
         #1 参数校验  输出
+        """执行 MilvusImportNode 的核心处理流程。
+
+        Args:
+            state: 当前工作流状态。
+
+        Returns:
+            处理结果。
+        """
         validated_chunks,expected_dim = self._validate_inputs(state)
 
         #2 向量入库
@@ -185,17 +238,28 @@ class MilvusImportNode(BaseNode):
 
         #3 用validated_chunks更新state中的chunk
         state["chunks"] = validated_chunks
-        
+
         return state
 
 
     def _validate_inputs(self, state):
+        """校验inputs。
+
+        Args:
+            state: 当前工作流状态。
+
+        Returns:
+            处理结果。
+
+        Raises:
+            ValidationError: 输入无效或处理过程无法继续时抛出。
+        """
         self.log_step("validate", "参数校验")
         chunks = state.get("chunks")
         if not chunks or not isinstance(chunks, list):
             raise ValidationError("The chunks field must be a list", self.name)
 
-        
+
         expected_dim = self.config.embedding_dim
 
         validated_chunks: list[dict[str, Any]] = []
@@ -299,6 +363,18 @@ class MilvusImportNode(BaseNode):
 
     def _insert_chunks_to_milvus(self,validated_chunks,expected_dim):
 
+        """批量校验并写入文档切片到 Milvus。
+
+        Args:
+            validated_chunks: 完成字段和向量校验的切片列表。
+            expected_dim: 向量应满足的维度。
+
+        Returns:
+            处理结果。
+
+        Raises:
+            MilvusError: 输入无效或处理过程无法继续时抛出。
+        """
         try:
             # 1创建Milvus客户端
             milvus_client = StorageClients.get_milvus()
@@ -310,6 +386,7 @@ class MilvusImportNode(BaseNode):
         chunks_collection = self.config.chunks_collection
 
         # 3判断上述Collection是否存在，如果不存在则创建Collection
+        collection_created = False
         if milvus_client.has_collection(chunks_collection):
             # 已经有相同名的collection了，不用创建了
             self.logger.info(f"Chunks collection {chunks_collection} already exists.")
@@ -332,13 +409,34 @@ class MilvusImportNode(BaseNode):
             collection = milvus_client.create_collection(collection_name=chunks_collection,
                                                          schema=schema,
                                                          index_params=index)
+            collection_created = True
 
         try:
-            # 4 插入数据，并且获取自增长的id
-            if self.config.bm25_enabled:
+            # 4 对显式主键 Collection 使用稳定 chunk_id + upsert，使任务
+            # 失败重试时覆盖相同切片，而不是产生重复数据。
+            uses_auto_id = self._collection_uses_auto_id(
+                milvus_client,
+                chunks_collection,
+                # 新建 Collection 的 Schema 明确关闭了 auto_id；旧 Collection
+                # 无法读取描述时维持原配置的兼容判断。
+                fallback=(
+                    False
+                    if collection_created
+                    else not self.config.bm25_enabled
+                ),
+            )
+            if not uses_auto_id:
                 for position, chunk in enumerate(validated_chunks):
                     chunk.setdefault("id", self._stable_chunk_id(chunk, position))
-            result = milvus_client.insert(collection_name=chunks_collection,data=validated_chunks)
+                result = milvus_client.upsert(
+                    collection_name=chunks_collection,
+                    data=validated_chunks,
+                )
+            else:
+                result = milvus_client.insert(
+                    collection_name=chunks_collection,
+                    data=validated_chunks,
+                )
             generated_ids = result.get("ids", [])
         except Exception as e:
             self.logger.error(f"Failed to insert chunks into Milvus. Reason: {e}")
@@ -366,8 +464,44 @@ class MilvusImportNode(BaseNode):
         return validated_chunks
 
     @staticmethod
+    def _collection_uses_auto_id(
+            client: MilvusClient,
+            collection_name: str,
+            *,
+            fallback: bool,
+    ) -> bool:
+        """读取 Collection 主键是否由 Milvus 自动生成。
+
+        老版本客户端或测试替身可能不提供 ``describe_collection``，此时
+        使用创建 Collection 时的配置作为兼容回退。
+        """
+        describe = getattr(client, "describe_collection", None)
+        if not callable(describe):
+            return fallback
+        try:
+            description = describe(collection_name=collection_name) or {}
+            if "auto_id" in description:
+                return bool(description["auto_id"])
+            for field in description.get("fields") or []:
+                if field.get("is_primary"):
+                    return bool(field.get("auto_id", fallback))
+        except Exception:
+            return fallback
+        return fallback
+
+    @staticmethod
     def _stable_chunk_id(chunk: dict[str, Any], position: int) -> int:
+        """根据文档与切片位置生成稳定主键。
+
+        Args:
+            chunk: 待处理的文档切片。
+            position: 当前记录在结果序列中的位置。
+
+        Returns:
+            处理结果。
+        """
         raw = "\x1f".join([
+            str(chunk.get("version_id") or ""),
             str(chunk.get("doc_id") or ""),
             str(chunk.get("section_id") or ""),
             str(chunk.get("chunk_index") if chunk.get("chunk_index") is not None else position),

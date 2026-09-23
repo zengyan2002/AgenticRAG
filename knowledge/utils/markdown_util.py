@@ -18,6 +18,14 @@ class MarkdownTableLinearizer:
 
     @classmethod
     def process(cls, content: str) -> str:
+        """执行 MarkdownTableLinearizer 的核心处理流程。
+
+        Args:
+            content: 待处理的文本内容。
+
+        Returns:
+            处理后的字符串。
+        """
         if not content:
             return content
 
@@ -31,6 +39,14 @@ class MarkdownTableLinearizer:
 
     @classmethod
     def _replace_html_table(cls, match) -> str:
+        """替换htmltable。
+
+        Args:
+            match: 正则表达式的当前匹配结果。
+
+        Returns:
+            处理后的字符串。
+        """
         html_content = match.group(0)
         soup = BeautifulSoup(html_content, "html.parser")
         table = soup.find("table")
@@ -68,6 +84,14 @@ class MarkdownTableLinearizer:
 
     @classmethod
     def _replace_md_table(cls, match) -> str:
+        """替换mdtable。
+
+        Args:
+            match: 正则表达式的当前匹配结果。
+
+        Returns:
+            处理后的字符串。
+        """
         md_text = match.group(0).strip()
         lines = md_text.split('\n')
         grid = []
@@ -80,6 +104,16 @@ class MarkdownTableLinearizer:
 
     @classmethod
     def _grid_to_text(cls, grid: List[List[str]], is_md: bool, has_th: bool) -> str:
+        """将 HTML 表格网格转换为 Markdown 文本。
+
+        Args:
+            grid: 从表格解析得到的二维单元格数据。
+            is_md: 输入内容是否来自 Markdown 表格。
+            has_th: 表格中是否包含表头单元格。
+
+        Returns:
+            处理后的字符串。
+        """
         if not grid or not grid[0]: return ""
 
         cols_count = max(len(r) for r in grid)
