@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import re
 import time
-from typing import Iterable
 
 from knowledge.processor.query_processor.base import BaseNode
 from knowledge.processor.query_processor.state import QueryGraphState
@@ -74,18 +73,16 @@ class AgentRouterNode(BaseNode):
             state["agentic_route_reason"] = "workflow_mode"
             return state
 
-        query = " ".join(
-            dict.fromkeys(
-                value.strip()
-                for value in (
-                    state.get("original_query"),
-                    state.get("rewritten_query"),
-                    state.get("retrieval_query"),
-                )
-                if isinstance(value, str) and value.strip()
+        # 原文和改写分别检查，保留原文约束，避免拼接后重复计算同一问句。
+        queries = list(dict.fromkeys(
+            value.strip()
+            for value in (
+                state.get("rewritten_query"),
+                state.get("original_query"),
+                state.get("retrieval_query"),
             )
-        )
-        retrieval_queries = self._valid_queries(state.get("retrieval_queries") or [])
+            if isinstance(value, str) and value.strip()
+        ))
 
         active = mode == "agentic"
         reason = "forced_agentic" if active else "simple_query"
@@ -95,7 +92,10 @@ class AgentRouterNode(BaseNode):
                 active = needs_planning
                 reason = "llm_needs_planning" if active else "llm_simple_query"
             else:
-                active, reason = self._is_complex(query, retrieval_queries)
+                for query in queries:
+                    active, reason = self._is_complex(query)
+                    if active:
+                        break
 
         state["agentic_active"] = active
         state["agentic_route_reason"] = reason
@@ -107,18 +107,15 @@ class AgentRouterNode(BaseNode):
     def _is_complex(
         cls,
         query: str,
-        retrieval_queries: Iterable[str],
     ) -> tuple[bool, str]:
         """判断complex是否满足条件。
 
         Args:
             query: 用户查询文本。
-            retrieval_queries: 当前计划产生的检索查询列表。
 
         Returns:
             处理结果。
         """
-        queries = cls._valid_queries(retrieval_queries)
         if cls._MULTI_HOP_PATTERN.search(query):
             return True, "multi_hop"
         if cls._COMPARISON_PATTERN.search(query):
@@ -126,29 +123,12 @@ class AgentRouterNode(BaseNode):
         if cls._MULTI_FACT_PATTERN.search(query):
             return True, "multi_fact"
 
-        # 多条检索表达只作为辅助信号：只有原问题本身也包含多个独立
-        # 问句/事实要求时才进入 Agentic，避免中英文同义检索误触发。
+        # 初步拆分已移除，直接根据完整问题中的多个提问信号兜底。
         demand_markers = re.findall(
             r"为什么|为何|如何|怎么|多少|哪些|是什么|有什么|结论|结果",
             query,
             flags=re.IGNORECASE,
         )
-        if len(queries) > 1 and len(demand_markers) >= 2:
+        if len(demand_markers) >= 2:
             return True, "multi_fact"
         return False, "simple_query"
-
-    @staticmethod
-    def _valid_queries(values: Iterable[str]) -> list[str]:
-        """校验查询集合。
-
-        Args:
-            values: 待处理的输入值集合。
-
-        Returns:
-            处理结果。
-        """
-        return [
-            value.strip()
-            for value in values
-            if isinstance(value, str) and value.strip()
-        ]

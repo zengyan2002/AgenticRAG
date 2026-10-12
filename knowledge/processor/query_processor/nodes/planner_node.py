@@ -24,7 +24,7 @@ from knowledge.utils.subquestion_retrieval_util import grouped_retrieval, reset_
 
 
 class PlannerNode(BaseNode):
-    """LLM 失败时复用文档路由阶段已有的确定性子问题。"""
+    """统一生成子问题和检索任务；LLM 失败时使用完整问题兜底。"""
 
     name = "planner_node"
     _VALID_TOOLS = ("vector", "hyde", "bm25")
@@ -303,13 +303,14 @@ class PlannerNode(BaseNode):
         else:
             intent = "multi_fact"
             profile = "deep"
+        query = str(
+            state.get("rewritten_query") or state.get("original_query") or ""
+        ).strip()
         return AgentPlan(
             intent=intent,
-            objective=str(
-                state.get("rewritten_query") or state.get("original_query") or ""
-            ),
-            sub_questions=list(state.get("retrieval_queries") or []),
-            search_queries=list(state.get("retrieval_queries") or []),
+            objective=query,
+            sub_questions=[query],
+            search_queries=[query],
             document_hints=self._document_hints(state),
             retrieval_profile=profile,
             retrieval_tools=self._tools_for_profile(profile),

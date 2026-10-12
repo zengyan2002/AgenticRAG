@@ -58,15 +58,10 @@ class DocumentRouteNode(BaseNode):
         (
             document_mentions,
             rewritten_query,
-            retrieval_subqueries,
             needs_planning,
         ) = self._understand_query(original_query, history_text)
         # 每次覆盖，避免复用状态时沿用上一轮的模型判断。
         state["query_needs_planning"] = needs_planning
-        if not retrieval_subqueries:
-            retrieval_subqueries = self._fallback_subqueries(
-                rewritten_query or original_query
-            )
         active_documents = self._active_documents_for_pronoun(
             original_query,
             history,
@@ -78,11 +73,9 @@ class DocumentRouteNode(BaseNode):
             )
 
         state["rewritten_query"] = rewritten_query or original_query
-        state["retrieval_queries"] = self._retrieval_queries(
-            state["rewritten_query"],
-            retrieval_subqueries,
-        )
-        state["query_decomposed"] = len(state["retrieval_queries"]) > 1
+        # 查询理解只保留完整问题；子问题和检索任务统一由 Planner 生成。
+        state["retrieval_queries"] = [state["rewritten_query"]]
+        state["query_decomposed"] = False
         state["document_mentions"] = document_mentions
         state["document_candidates"] = []
         state["selected_documents"] = []
@@ -193,7 +186,7 @@ class DocumentRouteNode(BaseNode):
             self,
             original_query: str,
             history_text: str,
-    ) -> Tuple[List[str], str, List[str], bool | None]:
+    ) -> Tuple[List[str], str, bool | None]:
         """调用模型识别查询意图、文档指代和约束。
 
         Args:
@@ -201,7 +194,7 @@ class DocumentRouteNode(BaseNode):
             history_text: 拼接后的会话历史文本。
 
         Returns:
-            文档指向、改写问题、子查询和规划判断；判断不可用时返回 None。
+            文档指向、改写问题和规划判断；判断不可用时返回 None。
         """
         fallback_mentions = self._deterministic_mentions(original_query)
         try:
@@ -245,12 +238,11 @@ class DocumentRouteNode(BaseNode):
                 raise ValueError("查询理解返回内容不是 JSON 对象")
             if not isinstance(parsed, dict):
                 raise ValueError("查询理解返回内容不是 JSON 对象")
-            for field in ("document_mentions", "retrieval_subqueries"):
-                values = parsed.get(field, [])
-                if not isinstance(values, list) or any(
-                    not isinstance(value, str) for value in values
-                ):
-                    raise ValueError(f"查询理解字段 {field} 必须为字符串数组")
+            values = parsed.get("document_mentions", [])
+            if not isinstance(values, list) or any(
+                not isinstance(value, str) for value in values
+            ):
+                raise ValueError("查询理解字段 document_mentions 必须为字符串数组")
             if not isinstance(parsed.get("rewritten_query", original_query), str):
                 raise ValueError("查询理解字段 rewritten_query 必须为字符串")
             needs_planning = parsed.get("needs_planning")
@@ -262,60 +254,10 @@ class DocumentRouteNode(BaseNode):
             rewritten_query = str(
                 parsed.get("rewritten_query") or original_query
             ).strip()
-            subqueries = unique_strings(
-                parsed.get("retrieval_subqueries") or [],
-                max_items=3,
-            )
-            return mentions, rewritten_query, subqueries, needs_planning
+            return mentions, rewritten_query, needs_planning
         except Exception as exc:
             self.logger.warning("查询改写失败，使用原查询放行: %s", exc)
-            return fallback_mentions, original_query, [], None
-
-    @staticmethod
-    def _retrieval_queries(
-            rewritten_query: str,
-            subqueries: List[str],
-    ) -> List[str]:
-        """从查询计划中收集并去重检索语句。
-
-        Args:
-            rewritten_query: 经过补全和改写的查询文本。
-            subqueries: 用于多路召回的子查询列表。
-
-        Returns:
-            处理结果。
-        """
-        return unique_strings(
-            [rewritten_query, *(subqueries or [])],
-            max_items=4,
-        ) or [rewritten_query]
-
-    @staticmethod
-    def _fallback_subqueries(query: str) -> List[str]:
-        """LLM漏拆时，对明显的比较/多事实并列问句做保守拆分。"""
-        if not isinstance(query, str):
-            return []
-        normalized = re.sub(r"\s+", " ", query).strip()
-        complex_markers = re.search(
-            r"分别|区别|不同|对比|相比|各自|同时|哪些|为何|为什么|"
-            r"结论是什么|多少|有什么影响",
-            normalized,
-        )
-        clauses = [
-            clause.strip(" ，,；;。？?")
-            for clause in re.split(r"[，,；;]", normalized)
-            if clause.strip(" ，,；;。？?")
-        ]
-        if not complex_markers or len(clauses) < 2:
-            return []
-
-        # 过短的“为什么/多少”等从句离开前文无法独立理解，不单独检索。
-        usable = [
-            f"{clause}？"
-            for clause in clauses
-            if len(normalize_document_name(clause)) >= 6
-        ]
-        return unique_strings(usable, max_items=3) if len(usable) >= 2 else []
+            return fallback_mentions, original_query, None
 
     def _load_registry_documents(self) -> List[Dict[str, Any]]:
         """读取小型文档注册表，供标题/别名确定性匹配。"""
